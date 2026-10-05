@@ -83,7 +83,9 @@ hash after each successful export. Refresh that hash manually if replacing the G
   tube's shape means updating its mapping, or decals sink or float. PNG-based decals (ENVE, Schwalbe, Bryton)
   use `mask_mat`/`print_mat`/`image_mat` with `uv=`.
 - `fuse()` voxel-remeshes and volume-preserving-smooths named objects into one filleted surface
-  (`front_triangle` = head tube + tube stubs, `fork`, `rear_triangle`). Keep decal-carrying tubes (`down_tube`,
+  (`front_triangle` = head tube + tube stubs, `fork`, `rear_triangle`, `stem_tbar` = stem + bar tops). The exporter
+  cuts the finished `stem_tbar` surface at its `barRearX` property into `stem_tbar` (Stem group) and
+  `handlebar_tbar_tops` (Cockpit), keeping the original normals, so the viewer can highlight the stem alone. Keep decal-carrying tubes (`down_tube`,
   `top_tube`) outside fusions; a decal on a fused surface needs a shrinkwrap (see the head-tube logo).
 - The frame line (`P_TOP`, `tt_u`, `FRAME_N`) drives the seat-tube top cut, collar and name tag via `cut_to_plane`.
 

@@ -13,7 +13,8 @@ export const PARTS = [
   { name: "Brakes", label: "Brakes", detail: "SRAM Rival AXS · Paceline 160 mm rotors", category: "DRIVETRAIN" },
   { name: "FrontLight", label: "Front light", detail: "Front light", category: "ACCESSORIES" },
   { name: "RearLight", label: "Rear light", detail: "Canyon FLASH Cycling Rear Light", category: "ACCESSORIES" },
-  { name: "Cockpit", label: "Cockpit & stem", detail: "Canyon PACE T-bar · 80 mm stem", category: "ACCESSORIES" },
+  // Selecting the cockpit upgrade highlights (and is picked by) the stem only, not the whole bar.
+  { name: "Cockpit", label: "Cockpit & stem", detail: "Canyon PACE T-bar · 80 mm stem", category: "ACCESSORIES", objectNames: ["Stem"] },
   { name: "Stem", label: "Stem", detail: "Canyon CP0048 PACE · 80 mm", category: "ACCESSORIES" },
   { name: "BikeComputer", label: "Bike computer", detail: "Bryton S510", category: "ACCESSORIES" },
   { name: "ComputerMount", label: "Computer mount", detail: "Canyon GEAR GROOVE Computer Mount", category: "ACCESSORIES" },
@@ -33,5 +34,5 @@ export const UPGRADE_PARTS = OWNER_UPGRADE_ORDER.map((name) => PARTS.find((part)
 export type CameraView = "perspective" | "side" | "front";
 export const BIKE_SIZE = "S";
 export const COMPONENT_SOURCE = "https://www.canyon.com/en-us/road-bikes/endurance-bikes/endurace/cf-slx/endurace-cf-slx-7-axs/4431.html?dwvar_4431_pv_rahmenfarbe=R130_P01";
-export const MODEL_URL = "/models/endurace.glb?v=bc0c22b6a7ad";
+export const MODEL_URL = "/models/endurace.glb?v=0a26b631491f";
 export const ENVIRONMENT_URL = "/environment/studio.hdr";

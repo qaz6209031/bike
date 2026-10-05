@@ -323,6 +323,47 @@ def refresh_model_url(dest):
     print(f"[viewer] Model URL: {url}")
 
 
+def split_tbar(scene, root):
+    """The one-piece T-bar is a single fused surface. Cut it at the bar's rear edge so the viewer can
+    highlight the stem alone; each piece keeps the original corner normals, so the cut leaves no seam."""
+    import bmesh
+    ob = scene.objects["stem_tbar"]
+    # cut the final (subdivided, smoothed) surface: splitting the cage would open a gap at the cut
+    evaluated = bpy.data.meshes.new_from_object(ob.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    ob.modifiers.clear()
+    ob.data = evaluated
+    cut, mw, me = ob["barRearX"], ob.matrix_world, ob.data
+    corner = me.corner_normals
+    shading = [{tuple(round(c, 6) for c in me.vertices[me.loops[li].vertex_index].co): tuple(corner[li].vector)
+                for li in p.loop_indices} for p in me.polygons]
+    is_bar = [(mw @ p.center).x > cut for p in me.polygons]
+    bar = ob.copy()
+    bar.data = me.copy()
+    bar.name = bar.data.name = "handlebar_tbar_tops"
+    scene.collection.objects.link(bar)
+    bar.parent, bar.matrix_world = root, mw.copy()
+    for part, keep_bar in ((ob, False), (bar, True)):
+        bm = bmesh.new()
+        bm.from_mesh(part.data)
+        src = bm.faces.layers.int.new("src_face")
+        for f in bm.faces:
+            f[src] = f.index
+        bmesh.ops.delete(bm, geom=[f for f in bm.faces if is_bar[f[src]] != keep_bar], context="FACES")
+        bm.faces.index_update()                         # indices go stale after the delete
+        bm.verts.index_update()
+        normals = {}
+        for f in bm.faces:
+            for loop in f.loops:
+                normals[(f.index, loop.vert.index)] = shading[f[src]][tuple(round(c, 6) for c in loop.vert.co)]
+        bm.to_mesh(part.data)
+        bm.free()
+        m = part.data
+        m.normals_split_custom_set([normals[(p.index, m.loops[li].vertex_index)] for p in m.polygons for li in p.loop_indices])
+        if "src_face" in m.attributes:
+            m.attributes.remove(m.attributes["src_face"])
+    return bar
+
+
 def main():
     scene = bpy.context.scene
     root = next(ob for ob in scene.objects if ob.type == "EMPTY" and ob.name.startswith("Endurace_CF"))
@@ -336,6 +377,7 @@ def main():
     bpy.context.view_layer.objects.active = next(ob for ob in originals if ob.type == "CURVE")
     bpy.ops.object.convert(target="MESH")
     bpy.context.view_layer.update()
+    split_tbar(scene, root)
     originals = [ob for ob in scene.objects if ob.type == "MESH" and ob.parent == root]
     if not scene.get("studio_materials_version"):
         import sys

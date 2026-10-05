@@ -1433,6 +1433,7 @@ sweep("handlebar_tops", [bar_c + v(0, y, -3 * max(0.0, 1 - abs(y) / 60)) for y i
       CARBON, up0=v(0, 0, 1))
 # one-piece T-bar: stem + tops fused, junctions smoothed into fillets (no seam/step at the bar)
 stem_tbar = fuse("stem_tbar", ["stem_head", "stem", "handlebar_tops"], voxel=0.8, smooth=10)
+stem_tbar["barRearX"] = (bar_c.x - 23) * S     # bar's rear edge at the stem: the viewer splits stem | bar tops here
 
 # Stem head prints (IMG_6973): non-drive side, lower front -> CORE / BASE BAR / CP0048 / LENGTH 80 mm /
 # CATEGORY 1; rear face: steerer-clamp bolt hole with "12 Nm".
