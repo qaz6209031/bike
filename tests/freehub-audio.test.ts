@@ -2,6 +2,7 @@ import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { FreehubAudio } from "../src/lib/freehub-audio.ts";
 import { FREEHUB_AUDIO_URL } from "../src/lib/freehub-recording.ts";
+import { asset } from "../src/lib/base-path.ts";
 import { rpmToRadians, WheelDrive } from "../src/lib/wheel-physics.ts";
 
 function browserAudio(t: TestContext) {
@@ -58,7 +59,7 @@ test("audio is inert until enabled and resumes before waiting for the audio file
   assert.deepEqual(browser.calls.slice(0, 3), ["context", "resume", "fetch"]);
   assert.equal(await enabling, true);
   assert.equal(browser.sources.length, 0, "enabling sound while stationary does not play it");
-  assert.deepEqual(browser.requests, [{ url: FREEHUB_AUDIO_URL, cache: "no-store" }], "the replacement recording bypasses old browser audio caches");
+  assert.deepEqual(browser.requests, [{ url: asset(FREEHUB_AUDIO_URL), cache: "no-store" }], "the replacement recording bypasses old browser audio caches");
 });
 
 test("freehub audio follows rear-wheel coast speed and fades to a stop", async (t) => {
