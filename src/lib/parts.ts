@@ -34,5 +34,5 @@ export const UPGRADE_PARTS = OWNER_UPGRADE_ORDER.map((name) => PARTS.find((part)
 export type CameraView = "perspective" | "side" | "front";
 export const BIKE_SIZE = "S";
 export const COMPONENT_SOURCE = "https://www.canyon.com/en-us/road-bikes/endurance-bikes/endurace/cf-slx/endurace-cf-slx-7-axs/4431.html?dwvar_4431_pv_rahmenfarbe=R130_P01";
-export const MODEL_URL = "/models/endurace.glb?v=0a26b631491f";
+export const MODEL_URL = "/models/endurace.glb?v=ba957ddb7279";
 export const ENVIRONMENT_URL = "/environment/studio.hdr";

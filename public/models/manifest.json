@@ -2,7 +2,7 @@
   "file": "/models/endurace.glb",
   "source": "endurace_cf_slx_7_axs_S.blend",
   "frameSize": "S",
-  "meshObjects": 329,
+  "meshObjects": 328,
   "units": "metres",
   "upAxis": "+Y",
   "wheelAxle": "+Z",

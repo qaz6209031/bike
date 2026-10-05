@@ -128,7 +128,11 @@ unsubscribes/cancels pending notifications on unmount.
   Schwalbe Pro One Evo 32mm tyres, SRAM Paceline 160mm rotors, SRAM flat-mount calipers,
   internally routed hoses (fork leg / chainstay ports).
 - Cockpit: Canyon PACE T-bar (flat aero tops, taped), 80 mm stem (owner's specification), Bryton S510 on a GEAR GROOVE mount.
-- Seat: Fizik Aliante R5 on SP0093 VCLS Aero post; Canyon FLASH rear light.
+- Seat: Fizik Aliante R5 on SP0093 VCLS Aero post; Canyon FLASH rear light. The post is matte black with no white
+  print on the shaft (only a dark-grey SP093 on the non-drive side and white "5 Nm" on the head): a slim rear leaf
+  sweeps back into the set-back clamp head, the front ~2/3 is a ribbed VCLS elastomer panel (`seattube_ref.jpg`).
+  Clamp bolt 629.5 mm up the seat axis, 10 mm setback; saddle 2.2 deg nose-down — back-projected from `bike_ref.jpg`
+  through the axle centres, which is how to measure any part's position from that photo.
 - Pedals: Shimano PD-R550. Cages: HUALONG 3K Carbon Fiber Bicycle Water Bottle Cage, X-style (same model) on down tube (adapter plate)
   and seat tube.
 - Website Upgrades lists only these nine owner additions, in order: Canyon FLASH Cycling Rear Light; Canyon PACE T-bar with 80 mm stem; HUALONG cages; Bryton S510; Canyon GEAR GROOVE Computer Mount; 36T-to-54T freehub upgrade; Shimano PD-R550 pedals; VeloInk name sticker (veloink.com); white ENVE rim decal stickers. The EnveDecals registry entry maps to both FrontEnveDecals and RearEnveDecals; keep those groups parented to their own wheel pivots. Keep the remaining stock parts addressable in the model without listing them in the panel. The owner requested removal of the geometry notice from the page.

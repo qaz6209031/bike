@@ -30,7 +30,6 @@ CHAINSTAY, BB_DROP = 418, 74
 TIRE_W = 32                       # Schwalbe Pro One 32mm
 R_BEAD = 311                      # 622 ISO / 2
 R_TIRE = R_BEAD + TIRE_W          # outer radius
-SADDLE_HEIGHT = 720               # BB to saddle top along seat axis
 S = 0.001                         # mm -> m
 
 STACK, REACH, ST_LEN, STA, HTA, HT_LEN, WB = GEOM[SIZE]
@@ -1721,37 +1720,169 @@ s_st = 160                                                     # lower bolt just
 bottle_cage_x("cage_seattube", st_dir * s_st + st_fwd * st_profile(s_st)[1], st_dir, st_fwd)  # same model as the DT cage
 
 # ---------------------------------------------------------------- seatpost (Canyon SP0093 VCLS Aero)
-POST_HW, POST_HH = 12.5, 19                                    # lateral / fore-aft half sizes
-post_top = st_dir * (SADDLE_HEIGHT - 40)
-post_len = SADDLE_HEIGHT - 40
-seatpost = loft("seatpost", [(ST_LEN - 15, POST_HW, POST_HH, 0), (post_len, POST_HW, POST_HH, 0)],
-                CARBON, n=48, exp=(0.75, 0.55), subsurf=False)
-seatpost.rotation_euler = (0, sta + math.pi, 0)
+# Owner photos seattube_ref.jpg (drive side) + bike_ref.jpg (non-drive side, back-projected through the axles):
+# matte-black 45 x 25 mm aero post; a slim rear leaf runs up into a set-back clamp head (bolt 629.5 mm up the
+# seat axis, 10 mm behind it); the front ~2/3 of the post is a ribbed VCLS elastomer panel split from the leaf
+# by a groove. No white print on the shaft: only a dark-grey SP093 near the collar (non-drive side).
+POST_HW, POST_HH = 12.5, 22.5                                  # lateral / fore-aft half sizes
+POST_EXP_Y, POST_EXP_F = 0.75, 0.55                            # superellipse section (as the old loft)
+POST_BOLT_A, POST_SETBACK = 629.5, 10.0                        # clamp bolt: along the seat axis / behind it
+POST_SPLIT_F = -POST_HH + 10.0                                 # leaf | elastomer split (10 mm rear leaf)
+POST_GROOVE = 1.0                                              # split groove width
+PANEL_TOP_A = 614.0                                            # elastomer top (just under the head)
+PANEL_RIBS = [PANEL_TOP_A - 22 - 13.5 * k for k in range(7)]   # 7 rib grooves, 13.5 mm apart
+post_top = st_dir * POST_BOLT_A - st_fwd * POST_SETBACK        # clamp centre (bolt axis)
+POST_MATTE = mat("Seatpost Matte Carbon", (0.022, 0.022, 0.024), rough=0.55)
+POST_RUBBER = mat("VCLS Elastomer", (0.03, 0.03, 0.032), rough=0.8)
+POST_PRINT = mat("Seatpost Print", (0.075, 0.075, 0.08), rough=0.4)   # dark grey: barely visible
+
+def post_w(f, hw=POST_HW, hh=POST_HH):
+    """Half-width of the post section at fore-aft offset f."""
+    t = min(abs(f) / hh, 1.0)
+    return hw * max(0.0, 1 - t ** (2 / POST_EXP_F)) ** (POST_EXP_Y / 2)
+
+def post_pt(a, f, y):
+    return st_dir * a + st_fwd * f + v(0, y, 0)
+
+def band_outline(f_lo, f_hi, hw=POST_HW, hh=POST_HH, r=1.0, n=28):
+    """Closed (f, y) loop of the part of the post section between f_lo and f_hi. Cut faces are flat with
+    r-rounded corners; uncut ends follow the superellipse to its tip."""
+    def phi(f):
+        t = max(-1.0, min(1.0, f / hh))
+        return math.copysign(math.asin(abs(t) ** (1 / POST_EXP_F)), t)
+    def side(p):
+        return (hh * math.copysign(abs(math.sin(p)) ** POST_EXP_F, math.sin(p)), hw * abs(math.cos(p)) ** POST_EXP_Y)
+    lo_cut, hi_cut = f_lo > -hh + 1e-6, f_hi < hh - 1e-6
+    p0, p1 = phi(f_lo + (r if lo_cut else 0)), phi(f_hi - (r if hi_cut else 0))
+    upper = [side(p0 + (p1 - p0) * k / n) for k in range(n + 1)]   # +y side, rear -> front
+    if not lo_cut:
+        upper = upper[1:]                                         # the rear tip is added once, below
+    if not hi_cut:
+        upper = upper[:-1]
+    def cut(f_, sgn):                                             # across a cut face, from +y to -y
+        w = post_w(f_, hw, hh)
+        pts = [(f_ - sgn * 0.3 * r, w - 0.3 * r)]
+        pts += [(f_, (w - r) * (1 - 2 * k / 6)) for k in range(7)]
+        return pts + [(f_ - sgn * 0.3 * r, -(w - 0.3 * r))]
+    loop = list(upper)
+    loop += cut(f_hi, 1) if hi_cut else [(hh, 0.0)]
+    loop += [(f_, -y_) for f_, y_ in reversed(upper)]
+    loop += [(f_, -y_) for f_, y_ in cut(f_lo, -1)] if lo_cut else [(-hh, 0.0)]
+    return loop
+
+def post_prism(name, loop, rows, m, sharp=0.6):
+    """Prism along the seat axis through `loop`. rows: (a_fn(f), inset_mm) bottom -> top; inset moves the
+    ring inward along the outline normal (grooves, fillets). Edges sharper than `sharp` rad stay crisp."""
+    cf = sum(p[0] for p in loop) / len(loop)
+    cy = sum(p[1] for p in loop) / len(loop)
+    normals = []
+    for i, (f_, y_) in enumerate(loop):
+        (f0, y0), (f1, y1) = loop[i - 1], loop[(i + 1) % len(loop)]
+        nf, ny = y1 - y0, -(f1 - f0)
+        ln = math.hypot(nf, ny) or 1.0
+        nf, ny = nf / ln, ny / ln
+        if nf * (f_ - cf) + ny * (y_ - cy) < 0:
+            nf, ny = -nf, -ny
+        normals.append((nf, ny))
+    bm = bmesh.new()
+    rings = []
+    for a_fn, inset in rows:
+        ring = []
+        for (f_, y_), (nf, ny) in zip(loop, normals):
+            ins = inset(f_) if callable(inset) else inset
+            ring.append(bm.verts.new(post_pt(a_fn(f_), f_ - nf * ins, y_ - ny * ins) * S))
+        rings.append(ring)
+    for r0, r1 in zip(rings, rings[1:]):
+        for j in range(len(loop)):
+            bm.faces.new((r0[j], r0[(j + 1) % len(loop)], r1[(j + 1) % len(loop)], r1[j]))
+    caps = [bm.faces.new(rings[0][::-1]), bm.faces.new(rings[-1])]
+    bmesh.ops.triangulate(bm, faces=caps)                       # the top cap is not planar (rounded top)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    for e in bm.edges:
+        if len(e.link_faces) == 2 and e.calc_face_angle(0.0) > sharp:
+            e.smooth = False
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    ob = add(bpy.data.objects.new(name, me), m)
+    smooth_shade(ob)
+    return ob
+
+def top_fillet(a_top, rt):
+    """Rows rounding a prism's top edge with radius rt; a_top(f) is the top in side view."""
+    return [(lambda f, t=t: a_top(f) - rt + rt * math.sin(t), lambda f, t=t: rt * (1 - math.cos(t)))
+            for t in (0.0, math.pi / 8, math.pi / 4, 3 * math.pi / 8, math.pi / 2)]
+
+a_hidden = ST_LEN - 10                                         # post bottom, hidden by the collar
+PANEL_F_LO = POST_SPLIT_F + POST_GROOVE
+def panel_top(f, R=18.0):
+    """Elastomer top in side view: flat under the head at the front, an R18 corner down into the split groove."""
+    d = f - PANEL_F_LO
+    return PANEL_TOP_A - (R - math.sqrt(max(R * R - (R - d) ** 2, 0.0)) if d < R else 0.0)
+flat = lambda a: (lambda f: a)
+# groove floor (a strip of the structural core, only where it shows) + rear leaf, fused below with the head
+post_prism("seatpost_core", band_outline(POST_SPLIT_F - 1.5, POST_SPLIT_F + 4, POST_HW - 1.3, POST_HH - 1.3),
+           [(flat(a_hidden), 0.0), (flat(PANEL_TOP_A - 2), 0.0)], POST_MATTE)
+post_prism("seatpost_leaf", band_outline(-POST_HH, POST_SPLIT_F, r=1.2),
+           [(flat(a_hidden), 0.0), (flat(POST_BOLT_A - 6), 0.0)], POST_MATTE)
+# the leaf sweeps forward over the elastomer's rounded top into the head: full section from just above the
+# panel top (groove-width gap, rounded lower edge) up into the head
+neck_bottom = lambda f: (panel_top(f) if f > POST_SPLIT_F else panel_top(PANEL_F_LO) - 6) + POST_GROOVE
+post_prism("seatpost_neck", band_outline(-POST_HH, POST_HH),
+           [(lambda f, t=t: neck_bottom(f) + 1.5 - 1.5 * math.sin(t), lambda f, t=t: 1.5 * (1 - math.cos(t)))
+            for t in (math.pi / 2, 3 * math.pi / 8, math.pi / 4, math.pi / 8, 0.0)] +
+           [(flat(POST_BOLT_A - 4), 0.0)], POST_MATTE)
+# clamp head: rounded block around the bolt axis that grows out of the leaf and overhangs it to the rear,
+# with rail cradles at the sides (rails sit ~10 mm above the bolt)
+# sections (along the axis from the bolt, half-width, half-depth, centre offset to the REAR): starts as the
+# 10 mm leaf 35 mm below the bolt and sweeps its rear edge back into the dome, staying behind the elastomer
+head_secs = [(-35, 12.0, 5.0, 7.5), (-25, 12.4, 6.5, 8.0), (-15, 13.5, 11.0, 6.5), (-6, 15.0, 17.0, 3.0),
+             (2, 15.5, 20.5, 0), (10, 14.5, 19, 0), (15, 11, 15, 0), (17, 6, 9, 0)]
+head = loft("seatpost_head", head_secs, POST_MATTE, n=48, exp=(0.7, 0.7), subsurf=False)
+head.location = post_top * S
+head.rotation_euler = (0, sta + math.pi, 0)                   # local X -> up the seat axis, as the post
+for sd, tag in ((-1, "R"), (1, "L")):
+    box(f"seatpost_cradle_{tag}", post_top + st_dir * 10.5 + v(0, sd * 21, 0), (24, 12, 10), POST_MATTE,
+        rot=(0, -(math.pi / 2 - sta), 0), bevel=3.5)
+fuse("seatpost", ["seatpost_core", "seatpost_leaf", "seatpost_neck", "seatpost_head", "seatpost_cradle_R", "seatpost_cradle_L"],
+     voxel=0.6, smooth=6)
+
+# VCLS elastomer: front ~2/3 of the post, 7 shallow rib grooves, rounded top (big radius at the rear corner)
+panel_rows = [(flat(a_hidden), 0.0)]
+for a_r in sorted(PANEL_RIBS):
+    panel_rows += [(flat(a_r - 0.8), 0.0), (flat(a_r - 0.3), 0.15), (flat(a_r + 0.3), 0.15), (flat(a_r + 0.8), 0.0)]
+panel_rows += top_fillet(panel_top, 2.0)
+post_prism("seatpost_elastomer", band_outline(POST_SPLIT_F + POST_GROOVE, POST_HH, r=1.0, n=36), panel_rows,
+           POST_RUBBER, sharp=0.25)                            # rib rims crisp: faint lines, not shaded bands
+
 collar = loft("seat_collar", [(ST_LEN - 1, POST_HW + 2.5, POST_HH + 2.5, 0), (ST_LEN + 7, POST_HW + 2, POST_HH + 2, 0)],
               RESIN, n=48, exp=(0.75, 0.55), subsurf=False)
 collar.rotation_euler = (0, sta + math.pi, 0)
 cut_to_plane(collar, ST_LEN - 1, P_TOP, FRAME_N, offset=-0.5, x_max=ST_LEN - 1)   # sits on the frame line ...
 cut_to_plane(collar, ST_LEN + 7, P_TOP, FRAME_N, offset=8)                        # ... top parallel, 8mm up
-# seat clamp cover: tab on the top tube just ahead of the collar, with its bolt
+# seat clamp cover: tab on the top tube just ahead of the collar, with its bolt and "5 Nm"
 clamp_c = P_TOP + tt_u * (POST_HH + 17) + FRAME_N * 1.6
 box("seat_clamp_cover", clamp_c, (30, 18, 3), RESIN, rot=along(tt_u), bevel=1.2)
-place("seat_clamp_bolt", disc_bmesh(4, 20), lambda x, y: clamp_c + tt_u * (x - 4) + v(0, y, 0) + FRAME_N * 1.6, DARK)
+place("seat_clamp_bolt", disc_bmesh(4, 20), lambda x, y: clamp_c + tt_u * (x + 6) + v(0, y, 0) + FRAME_N * 1.6, DARK)
+decal("seat_clamp_5nm", "5 Nm", FONT_BOLD, 6, 1.9, lambda x, y: clamp_c + tt_u * (y - 4) - v(0, x, 0) + FRAME_N * 1.62,
+      DECAL_WHITE, cuts=1)
 post_tilt = (0, -(math.pi / 2 - sta), 0)
-box("seatpost_head", post_top + st_dir * 4 - st_fwd * 4, (44, 30, 26), CARBON, rot=post_tilt, bevel=6)
 for side, tag in ((-1, "R"), (1, "L")):
-    cyl(f"seatpost_bolt_{tag}", post_top + st_dir * 6 - st_fwd * 4 + v(0, side * 15.5, 0), 6.5, 2, DARK)
-    nm_c = post_top + st_dir * 15 - st_fwd * 4 + v(0, side * 15.3, 0)
-    decal(f"seatpost_5nm_{tag}", "5 Nm", FONT_BOLD, 9, 2.6, lambda x, y, c=nm_c, sd=side: c + v(-sd * x, 0, y),
-          DECAL_WHITE, cuts=1)
-    cyl(f"seatpost_bolt_hex_{tag}", post_top + st_dir * 6 - st_fwd * 4 + v(0, side * 16.6, 0), 2.6, 0.6, RESIN,
-        verts=6)
-    # side print, reading up the post (letter tops toward the front on the left side)
-    side_pt = st_dir * (ST_LEN + 28) + v(0, side * (POST_HW + 0.3), 0)
-    up = st_fwd * side
-    decal(f"seatpost_sp093_{tag}", "SP093", FONT_BOLD, 26, 6, lambda x, y, b=side_pt, u=up: b + st_dir * x + u * y,
-          DECAL_GREY, cuts=2)
-    decal(f"seatpost_vcls_{tag}", "VCLS AERO  SETBACK 10 MM / CATEGORY 1", FONT_COND, 52, 2.6,
-          lambda x, y, b=side_pt, u=up: b + st_dir * (x + 46) + u * (y + 5.5), DECAL_GREY, cuts=1)
+    hy = 16.0                                                  # head side face at the bolt
+    cyl(f"seatpost_bolt_{tag}", post_top + v(0, side * (hy + 0.4), 0), 5.2, 1.6, CARBON)    # glossy bolt head
+    cyl(f"seatpost_bolt_hex_{tag}", post_top + v(0, side * (hy + 1.25), 0), 2.2, 0.2, RESIN, verts=6)
+    nm_c = post_top + st_dir * 7.0                             # between the bolt and the rails
+    nm = decal(f"seatpost_5nm_{tag}", "5 Nm", FONT_BOLD, 7, 2.1,
+               lambda x, y, c=nm_c, sd=side: c + v(-sd * x, sd * (hy + 0.6), 0) + st_dir * y, DECAL_WHITE, cuts=1)
+    sw = nm.modifiers.new("snap", "SHRINKWRAP")
+    sw.target, sw.wrap_method, sw.wrap_mode, sw.offset = bpy.data.objects["seatpost"], "NEAREST_SURFACEPOINT", "ABOVE_SURFACE", 0.15 * S
+# non-drive side only: dark-grey SP093 reading up the post just above the collar, small spec line beside it
+def panel_side(a, f, lift=0.12):
+    return post_pt(a, f, post_w(f) + lift)
+decal("seatpost_sp093_L", "SP093", FONT_BOLD, 17, 4.6, lambda x, y: panel_side(ST_LEN + 19 + x, -4.5 + y), POST_PRINT,
+      cuts=2)
+decal("seatpost_spec_L", "VCLS AERO  SETBACK 10 MM / CATEGORY 1", FONT_COND, 30, 1.5,
+      lambda x, y: panel_side(ST_LEN + 30 + x, -9.2 + y), POST_PRINT, cuts=1)
 
 # ---------------------------------------------------------------- Canyon FLASH rear light (80 x 19 x 21 mm)
 LENS = mat("Flash Lens", (0.5, 0.01, 0.01), rough=0.08, coat=1.0)
@@ -1801,7 +1932,7 @@ def saddle_side_y(x, z):
     sn = min(abs((z - zc) / hh), 1.0) ** (1 / 0.9)
     return hw * math.sqrt(max(1 - sn * sn, 0)) ** 0.7
 
-saddle_c = post_top + v(15, 0, 40)
+saddle_c = post_top + v(5.5, 0, 40.5)            # owner photos: rails ~12 mm above the clamp bolt, top ~53 mm
 saddle = loft("saddle", SADDLE_SECTIONS, SADDLE_TOP, n=32)
 saddle.location = saddle_c * S
 saddle.data.materials.append(SADDLE_SIDE)
@@ -1835,6 +1966,11 @@ for sd, tag in ((-1, "R"), (1, "L")):
                                 saddle_c + v(96, sd * 15, -10), saddle_c + v(118, sd * 9, 0)],
          3.5, CARBON, smooth=True)
     box(f"saddle_rail_socket_{tag}", saddle_c + v(-110, sd * 26, 10), (12, 12, 14), CARBON, bevel=3)
+# owner photo bike_ref.jpg: the saddle sits 2.2 deg nose-down; pitch every saddle part about the clamp
+SADDLE_PITCH = math.radians(2.2)
+_pitch = Matrix.Translation(post_top * S) @ Matrix.Rotation(SADDLE_PITCH, 4, "Y") @ Matrix.Translation(-post_top * S)
+for _ob in [o for o in bpy.data.objects if o.name.startswith("saddle")]:
+    _ob.matrix_world = _pitch @ _ob.matrix_world
 
 # ---------------------------------------------------------------- environment
 bpy.ops.mesh.primitive_plane_add(size=20, location=(0, 0, ground_z * S))
