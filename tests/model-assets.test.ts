@@ -140,3 +140,19 @@ test("the freehub audio uses the owner's complete, native coasting take without 
   }
   assert.ok(peak < 32767, "the recording is not clipped");
 });
+
+test("procedural rubber details are baked into the exported materials", () => {
+  type Material = { name: string; normalTexture?: { index: number; extensions?: { KHR_texture_transform?: { scale?: number[] } } } };
+  const doc = gltf as unknown as { materials: Material[]; textures: { source: number }[]; images: { name: string }[] };
+  const expected: Record<string, { image: string; scaleU?: number }> = {
+    "Bar Tape": { image: "bar_tape_wrap_normal", scaleU: 4 },         // one tile per 25 mm wrap
+    "Tire Rubber": { image: "tire_tread_normal", scaleU: 860 },       // 860 tread cycles per revolution
+    "Hood Rubber": { image: "hood_grip_normal" },
+  };
+  for (const [name, want] of Object.entries(expected)) {
+    const material = doc.materials.find((m) => m.name === name);
+    assert.ok(material?.normalTexture, `${name} must carry its pattern as a normal texture`);
+    assert.equal(doc.images[doc.textures[material.normalTexture.index].source].name, want.image);
+    if (want.scaleU) assert.equal(material.normalTexture.extensions?.KHR_texture_transform?.scale?.[0], want.scaleU);
+  }
+});

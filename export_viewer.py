@@ -121,6 +121,169 @@ def web_materials():
         nt.links.new(b.outputs[0], output.inputs[0])
 
 
+# ---------------------------------------------------------------------------------------------------
+# Procedural rubber details -> tileable textures.
+# build_endurace.py gives Bar Tape, Tire Rubber and Hood Rubber procedural bump patterns that glTF
+# cannot store (and web_materials() would replace with a generic grain). Each pattern below is the
+# SAME formula as its Blender shader, sampled over one repeating tile in real millimetres, so the
+# normals match the procedural bump depth. Tiles wrap seamlessly (np.roll derivatives).
+
+def srgb(linear):
+    linear = np.clip(linear, 0, 1)
+    return np.where(linear <= 0.0031308, linear * 12.92, 1.055 * np.power(linear, 1 / 2.4) - 0.055)
+
+
+def normal_from_height(height_mm, du_mm, dv_mm, wrap_v=True):
+    """Tangent-space normal map (OpenGL / glTF convention: +X = +U, +Y = +V) from a height field
+    whose rows are V (bottom row first, as Blender stores pixels) and columns are U."""
+    ddu = (np.roll(height_mm, -1, axis=1) - np.roll(height_mm, 1, axis=1)) / (2 * du_mm)
+    if wrap_v:
+        ddv = (np.roll(height_mm, -1, axis=0) - np.roll(height_mm, 1, axis=0)) / (2 * dv_mm)
+    else:
+        ddv = np.gradient(height_mm, dv_mm, axis=0)
+    n = np.stack((-ddu, -ddv, np.ones_like(ddu)), axis=-1)
+    n /= np.linalg.norm(n, axis=-1, keepdims=True)
+    return n * 0.5 + 0.5
+
+
+def rebuild_material(mat, *, base, roughness, normal_img, uv_map, scale_u=1.0, scale_v=1.0,
+                     normal_strength=1.0, base_img=None):
+    nt = mat.node_tree
+    nt.nodes.clear()
+    b = nt.nodes.new("ShaderNodeBsdfPrincipled")
+    b.inputs["Base Color"].default_value = base
+    b.inputs["Roughness"].default_value = roughness
+    uv = nt.nodes.new("ShaderNodeUVMap")
+    uv.uv_map = uv_map
+    mapping = nt.nodes.new("ShaderNodeMapping")
+    mapping.inputs["Scale"].default_value = (scale_u, scale_v, 1)
+    nt.links.new(uv.outputs[0], mapping.inputs[0])
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = normal_img
+    nt.links.new(mapping.outputs[0], tex.inputs["Vector"])
+    nm = nt.nodes.new("ShaderNodeNormalMap")
+    nm.uv_map = uv_map
+    nm.inputs["Strength"].default_value = normal_strength
+    nt.links.new(tex.outputs[0], nm.inputs["Color"])
+    nt.links.new(nm.outputs[0], b.inputs["Normal"])
+    if base_img is not None:
+        btex = nt.nodes.new("ShaderNodeTexImage")
+        btex.image = base_img
+        nt.links.new(mapping.outputs[0], btex.inputs["Vector"])
+        nt.links.new(btex.outputs[0], b.inputs["Base Color"])
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    nt.links.new(b.outputs[0], out.inputs[0])
+
+
+def tape_wrap_textures(size_u=256, size_v=1024):
+    """Bar Tape: h = fract(4u + v) ** 6 (Bump 1.0, 0.8 mm); colour ramp 0.007 -> 0.020 on fract.
+    Tile = one 25 mm wrap (u in [0, 0.25) of the 100 mm/unit sweep UV) x the full bar circumference."""
+    v_, u_ = np.mgrid[0:size_v, 0:size_u]
+    phase = (u_ / size_u + v_ / size_v) % 1.0
+    rng = np.random.default_rng(7)
+    height = 0.8 * phase ** 6 + rng.normal(0, 0.004, phase.shape)        # + fine rubber grain
+    circumference = math.pi * 26.0                                       # ~26 mm taped bar
+    normal = image("bar_tape_wrap_normal", normal_from_height(height, 25.0 / size_u, circumference / size_v),
+                   "Non-Color")
+    shade = srgb(0.007 + 0.013 * phase)
+    base = image("bar_tape_wrap_base", np.repeat(shade[..., None], 3, axis=-1))
+    return normal, base
+
+
+TREAD_R, TREAD_r = 0.327, 0.016            # Pro One 32 mm torus: major / minor radius (m)
+TREAD_CYCLES = 860                         # sin(theta * 860 ...): 860 tread cycles per revolution
+
+
+def tread_texture(size_u=32, size_v=2048):
+    """Tire Rubber shoulders: wave = sin(theta*860 + |z|*2500), masked to |z| in (3.5, 12) mm and
+    r > 336 mm (slick centre). Tile = one tread cycle (u) x the full minor circle phi (v)."""
+    v_, u_ = np.mgrid[0:size_v, 0:size_u]
+    phi = (v_ / size_v) * 2 * math.pi - math.pi
+    z = np.abs(TREAD_r * np.sin(phi))
+    r = TREAD_R + TREAD_r * np.cos(phi)
+    mask = (z > 0.0035) & (z < 0.012) & (r > 0.336)
+    wave = np.sin(2 * math.pi * u_ / size_u + z * 2500)
+    height = 0.2 * 0.35 * wave * mask                                     # mm (Bump 0.35 x 0.2 mm)
+    du = 2 * math.pi * (TREAD_R + TREAD_r) * 1000 / TREAD_CYCLES / size_u
+    dv = 2 * math.pi * TREAD_r * 1000 / size_v
+    return image("tire_tread_normal", normal_from_height(height, du, dv), "Non-Color")
+
+
+GRIP_PERIOD_MM = 2 * math.pi               # sin(x*1000 ...) with x in m: 6.28 mm period
+GRIP_Y_MM = 50.0                           # tile covers +-50 mm of arc around the hood (top centre = 0)
+
+
+def grip_texture(size_u=64, size_v=512):
+    """Hood Rubber: chev = sin(x*1000 + |y|*1000), dash = sin(y*700), h = max(chev-0.6,0)*max(dash,0)
+    (Bump 0.6 x 0.8 mm). Tile = one chevron period in x (u) x arc position around the hood (v);
+    on the top surface arc ~= y, so the top matches the procedural exactly."""
+    v_, u_ = np.mgrid[0:size_v, 0:size_u]
+    y_mm = (v_ / size_v) * 2 * GRIP_Y_MM - GRIP_Y_MM
+    chev = np.sin(2 * math.pi * u_ / size_u + np.abs(y_mm))
+    dash = np.sin(0.7 * y_mm)
+    rng = np.random.default_rng(11)
+    height = 0.8 * 0.6 * np.maximum(chev - 0.6, 0) * np.maximum(dash, 0) + rng.normal(0, 0.003, chev.shape)
+    return image("hood_grip_normal", normal_from_height(height, GRIP_PERIOD_MM / size_u, 2 * GRIP_Y_MM / size_v,
+                                                       wrap_v=False), "Non-Color")
+
+
+def add_uv_layer(ob, name, fn, wrap_u=False, wrap_v=False):
+    """New UV layer from local vertex positions (m). fn(co) -> (u, v). wrap_u / wrap_v fix faces that
+    cross the 0/1 seam of an angular coordinate."""
+    me = ob.data
+    layer = me.uv_layers.get(name) or me.uv_layers.new(name=name)
+    for poly in me.polygons:
+        uvs = [fn(me.vertices[me.loops[li].vertex_index].co) for li in poly.loop_indices]
+        if wrap_u and max(u for u, _ in uvs) - min(u for u, _ in uvs) > 0.5:
+            uvs = [(u + 1.0 if u < 0.5 else u, v) for u, v in uvs]
+        if wrap_v and max(v for _, v in uvs) - min(v for _, v in uvs) > 0.5:
+            uvs = [(u, v + 1.0 if v < 0.5 else v) for u, v in uvs]
+        for li, uv in zip(poly.loop_indices, uvs):
+            layer.data[li].uv = uv
+    return layer
+
+
+def rubber_pattern_materials(scene):
+    """Replace the generic grain on Bar Tape / Tire Rubber / Hood Rubber with their real patterns."""
+    tape = bpy.data.materials.get("Bar Tape")
+    if tape:
+        normal, base = tape_wrap_textures()
+        rebuild_material(tape, base=(0.012, 0.012, 0.012, 1), roughness=0.64, normal_img=normal, uv_map="UVMap",
+                         scale_u=4.0, normal_strength=1.0, base_img=base)
+    tire = bpy.data.materials.get("Tire Rubber")
+    if tire:
+        def tread_uv(co):
+            theta = math.atan2(co.y, co.x) % (2 * math.pi)
+            phi = math.atan2(co.z, math.hypot(co.x, co.y) - TREAD_R)
+            return theta / (2 * math.pi), (phi + math.pi) / (2 * math.pi)
+        for ob in scene.objects:
+            if ob.type == "MESH" and ob.name.endswith("_wheel_tire"):
+                add_uv_layer(ob, "TreadUV", tread_uv, wrap_u=True, wrap_v=True)
+        rebuild_material(tire, base=(0.015, 0.015, 0.015, 1), roughness=0.65, normal_img=tread_texture(),
+                         uv_map="TreadUV", scale_u=TREAD_CYCLES, normal_strength=1.0)
+    hood = bpy.data.materials.get("Hood Rubber")
+    if hood:
+        for ob in scene.objects:
+            if not (ob.type == "MESH" and ob.name.startswith("hood_")):
+                continue
+            # Unwrap around each lofted section (rings share x): v = arc length from the top centre,
+            # so the chevrons stay undistorted down the steep hood sides (a top-down projection
+            # would stretch them there).
+            rings = {}
+            for vert in ob.data.vertices:
+                rings.setdefault(round(vert.co.x, 4), []).append(vert.co)
+            centre = {k: sum((c.z for c in cs), 0.0) / len(cs) for k, cs in rings.items()}
+            radius = {k: sum(math.hypot(c.y, c.z - centre[k]) for c in cs) / len(cs) for k, cs in rings.items()}
+            def grip_uv(co, centre=centre, radius=radius):
+                k = round(co.x, 4)
+                psi = math.atan2(co.y, co.z - centre[k])               # 0 at the top, +-pi underneath
+                arc_mm = psi * radius[k] * 1000
+                return co.x * 1000 / GRIP_PERIOD_MM, (arc_mm + GRIP_Y_MM) / (2 * GRIP_Y_MM)
+            add_uv_layer(ob, "GripUV", grip_uv, wrap_v=True)
+        rebuild_material(hood, base=(0.015, 0.015, 0.016, 1), roughness=0.66, normal_img=grip_texture(),
+                         uv_map="GripUV", normal_strength=1.0)
+
+
 def group(name, parent, location=(0, 0, 0)):
     ob = bpy.data.objects.new(name, None)
     bpy.context.scene.collection.objects.link(ob)
@@ -176,6 +339,7 @@ def main():
         from upgrade_studio import upgrade_materials
         upgrade_materials(scene)
     web_materials()
+    rubber_pattern_materials(scene)
 
     front = scene.objects["front_wheel_tire"].matrix_world.translation.copy()
     rear = scene.objects["rear_wheel_tire"].matrix_world.translation.copy()
