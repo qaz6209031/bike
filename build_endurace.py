@@ -531,6 +531,10 @@ def glyph_decal(name, json_file, height_mm, mapfn, m):
             except ValueError:
                 pass
     bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-4)
+    for f in bm.faces:                       # tessellation can emit mixed windings (around holes): face +Z
+        f.normal_update()
+        if f.normal.z < 0:
+            f.normal_flip()
     bmesh.ops.subdivide_edges(bm, edges=[e for e in bm.edges if e.calc_length() > 2.0], cuts=1, use_grid_fill=True)
     return place(name, bm, mapfn, m)
 
@@ -815,17 +819,28 @@ crown_top = ht_bot + hd * 4.8                                  # 0.8mm seam unde
 seam = loft("headset_seam", [(-1.2, 28.7, 30.2, 0), (0.4, 28.7, 30.2, 0)], DARK, n=48, exp=(1, 1), subsurf=False)
 seam.location = crown_top * S
 seam.rotation_euler = along(hd)
-fork_crown = loft("fork_crown", [(0, 29.5, 31, 0), (6, 29.6, 30.4, 0), (14, 28.6, 28, 0), (22, 26.5, 24, 0),
-                                  (30, 23, 18.5, 0), (36, 19, 13, 0)],
-                  WHITE, n=48, exp=(1, 1), subsurf=False)       # same outline as the head tube bottom
+# Fork (owner photo IMG_6978): rated for 38 mm tyres, so a 32 mm tyre has clear gaps. The crown starts
+# with the head-tube outline and widens into a broad arch; its underside ends 30 mm below the crown top
+# (~16 mm above the tyre); oval legs run nearly parallel outside the tyre, then splay to the dropouts.
+fork_crown = loft("fork_crown", [(0, 29.5, 31, 0), (6, 30, 30.4, 0), (12, 30, 29, 0)],
+                  WHITE, n=48, exp=(1, 1), subsurf=False)       # head-tube outline; the legs flare out of it
 fork_crown.location = crown_top * S
 fork_crown.rotation_euler = along(hd)
+FORK_INNER_Y = 25.0                       # leg inner faces from the centreline: 9 mm each side of a 32 mm tyre
 for s, side in ((-1, "R"), (1, "L")):
     mid = ht_bot + hd * (t_axle * 0.5) + hn * (fork_offset * 0.3)
-    tube(f"fork_blade_{side}",                                  # legs grow out of the crown -> arch between them
-         [crown_top + hd * 16 + v(0, s * 14, 0), crown_top + hd * 40 + hn * 2 + v(0, s * 24, 0),
-          mid + v(0, s * 46, 0), front + v(0, s * 52, 0)],
-         [18, 16, 13, 9], WHITE, smooth=True)
+    ctrl = [crown_top + hd * 3 + v(0, s * 16, 0), crown_top + hd * 20 + v(0, s * 25, 0),
+            crown_top + hd * 42 + v(0, s * 34, 0), crown_top + hd * 95 + hn * (fork_offset * 0.12) + v(0, s * 37.5, 0),
+            mid + v(0, s * 43, 0), front + v(0, s * 50, 0)]
+    path = [Vector(q) for q in catmull([tuple(c) for c in ctrl], 48)]
+    n_ = len(path)
+    lat = [22 - 11 * (k / (n_ - 1)) ** 1.1 for k in range(n_)]         # lateral thickness 22 -> 11 mm
+    deep = [52 - 36 * (k / (n_ - 1)) ** 0.6 for k in range(n_)]        # fore-aft depth 52 (crown) -> 16 mm
+    sweep(f"fork_blade_{side}", path, deep, lat, WHITE, up0=v(0, 1, 0))
+    for k in range(n_):                     # sanity: beside a 38 mm tyre, keep >= 3 mm from its sidewall
+        radial = math.hypot(path[k].x - front.x, path[k].z - front.z)
+        if radial < R_BEAD + 38 + 3 and abs(path[k].y) - lat[k] / 2 < 19.0 + 3.0:
+            raise ValueError(f"fork leg {side} would rub a 38 mm tyre at point {k}")
 # crown + legs as one moulded part: no flat-cut leg ends under the crown, filleted crown-to-leg blend
 fuse("fork", ["fork_crown", "fork_blade_R", "fork_blade_L"])
 
@@ -920,6 +935,14 @@ def flat_mount_caliper(name, c, ang_deg, mount_to=None, port_fn=None):
 
 HUB_BLACK = mat("DT Swiss Hub Black", (0.02, 0.02, 0.022), rough=0.35, metal=0.5)
 
+DT_PRINT = mat("DT Print", (0.80, 0.77, 0.66), rough=0.55)           # worn cream-white print (dtswiss_ref.png)
+DT350_H, DTSWISS_H = 9.0, 2.6
+def _glyph_aspect(fn):
+    import json
+    with open(os.path.join(OUT, fn)) as f:
+        return json.load(f)["width"]
+DT350_W, DTSWISS_W = DT350_H * _glyph_aspect("dt350_glyphs.json"), DTSWISS_H * _glyph_aspect("dtswiss_glyphs.json")
+
 def dt350_hub(name, c, y_left, y_right):
     """DT Swiss 350 (owner photos IMG_6954/6955): slim black shell between two spoke flanges,
     big '350' and 'DT SWISS' printed on the shell; rotor 6-bolt mount is on the left (disc) side."""
@@ -932,10 +955,11 @@ def dt350_hub(name, c, y_left, y_right):
         def shell_map(x, yy, phi0=phi0, yoff=0.0):
             phi = phi0 + yy / 13.0
             return c + v(13.3 * math.cos(phi), shell_mid + yoff + x, 13.3 * math.sin(phi))
-        decal(f"{name}_hub_350_{k}", "350", FONT_HEAVY, 22, 9, lambda x, yy, f=shell_map: f(x, yy + 3), DECAL_WHITE,
-              cuts=3)
-        decal(f"{name}_hub_dtswiss_{k}", "DT SWISS", FONT_COND, 16, 2.8, lambda x, yy, f=shell_map: f(x, yy - 5),
-              DECAL_WHITE, cuts=1)
+        # '350' (drawn from dtswiss_ref.png) above the official DT SWISS logotype, left-aligned under it
+        glyph_decal(f"{name}_hub_350_{k}", "dt350_glyphs.json", DT350_H,
+                    lambda x, yy, f=shell_map: f(x, yy + 2.6), DT_PRINT)
+        glyph_decal(f"{name}_hub_dtswiss_{k}", "dtswiss_glyphs.json", DTSWISS_H,
+                    lambda x, yy, f=shell_map: f(x - (DT350_W - DTSWISS_W) / 2 - 0.4, yy - 4.6), DT_PRINT)
 
 def wheel(name, c, y_drive_flange=-34):
     torus(f"{name}_tire", c, R_BEAD + TIRE_W / 2, TIRE_W / 2, TIRE)

@@ -327,8 +327,158 @@ def trace_endurace():
           f"{sum(len(l) for l in out)} vertices")
 
 
+def svg_path_loops(d, curve_steps=14):
+    """Minimal SVG path flattener for M/L/H/V/C (absolute + relative) and Z. Returns closed loops (y down)."""
+    import re
+    tokens = re.findall(r"[MmLlHhVvCcZz]|-?\d*\.?\d+(?:e-?\d+)?", d)
+    loops, cur, x, y, sx, sy, cmd, i = [], [], 0.0, 0.0, 0.0, 0.0, None, 0
+    def num():
+        nonlocal i
+        i += 1
+        return float(tokens[i - 1])
+    while i < len(tokens):
+        t = tokens[i]
+        if t.isalpha():
+            cmd = t
+            i += 1
+            if cmd in "Zz":
+                if cur:
+                    loops.append(cur)
+                cur, x, y = [], sx, sy
+                continue
+        rel = cmd.islower()
+        c = cmd.upper()
+        if c == "M":
+            nx, ny = num(), num()
+            x, y = (x + nx, y + ny) if rel else (nx, ny)
+            if cur:
+                loops.append(cur)
+            cur, sx, sy = [(x, y)], x, y
+            cmd = "l" if rel else "L"                       # implicit lineto after moveto
+        elif c == "L":
+            nx, ny = num(), num()
+            x, y = (x + nx, y + ny) if rel else (nx, ny)
+            cur.append((x, y))
+        elif c == "H":
+            nx = num()
+            x = x + nx if rel else nx
+            cur.append((x, y))
+        elif c == "V":
+            ny = num()
+            y = y + ny if rel else ny
+            cur.append((x, y))
+        elif c == "C":
+            pts = [num() for _ in range(6)]
+            if rel:
+                pts = [pts[0] + x, pts[1] + y, pts[2] + x, pts[3] + y, pts[4] + x, pts[5] + y]
+            (x1, y1, x2, y2, x3, y3) = pts
+            for k in range(1, curve_steps + 1):
+                t_ = k / curve_steps
+                mt = 1 - t_
+                cur.append((mt ** 3 * x + 3 * mt * mt * t_ * x1 + 3 * mt * t_ * t_ * x2 + t_ ** 3 * x3,
+                            mt ** 3 * y + 3 * mt * mt * t_ * y1 + 3 * mt * t_ * t_ * y2 + t_ ** 3 * y3))
+            x, y = x3, y3
+    if cur:
+        loops.append(cur)
+    return loops
+
+
+def write_glyphs(name, loops, source, frame="flat: x = reading direction, y up"):
+    import json
+    xs = [p[0] for lp in loops for p in lp]
+    ys = [p[1] for lp in loops for p in lp]
+    x0, y0, H = min(xs), min(ys), max(ys) - min(ys)
+    def dedupe(lp):                                # drop repeated points (SVG curve joins, explicit closes)
+        out_ = []
+        for pt in lp:
+            if not out_ or abs(pt[0] - out_[-1][0]) + abs(pt[1] - out_[-1][1]) > 1e-6:
+                out_.append(pt)
+        while len(out_) > 1 and abs(out_[0][0] - out_[-1][0]) + abs(out_[0][1] - out_[-1][1]) <= 1e-6:
+            out_.pop()
+        return out_
+    loops = [dedupe(lp) for lp in loops]
+    loops = [lp for lp in loops if len(lp) >= 3]
+    def inside(pt, lp):
+        x, y, c = pt[0], pt[1], False
+        for i in range(len(lp)):
+            (xa, ya), (xb, yb) = lp[i - 1], lp[i]
+            if (ya > y) != (yb > y) and x < (xb - xa) * (y - ya) / (yb - ya) + xa:
+                c = not c
+        return c
+    fixed = []
+    for i, lp in enumerate(loops):                 # nesting depth by containment (even-odd fill rule)
+        depth = sum(1 for j, other in enumerate(loops) if j != i and inside(lp[0], other))
+        want_ccw = depth % 2 == 0
+        fixed.append(lp if (area(lp) > 0) == want_ccw else lp[::-1])
+    out = [[(round((x - x0) / H, 5), round((y - y0) / H, 5)) for x, y in lp] for lp in fixed]
+    data = {"source": source, "units": "text height = 1", "frame": frame,
+            "width": round((max(xs) - x0) / H, 4), "height": 1.0, "loops": out}
+    with open(os.path.join(OUT, name), "w") as f:
+        json.dump(data, f)
+    print(f"{name}: {len(out)} loops, aspect {data['width']:.2f}:1, {sum(len(l) for l in out)} vertices")
+
+
+def trace_dtswiss_logo():
+    """DT SWISS wordmark from DT Swiss's own vector logo (dtswiss.com/assets/images/logo-white.svg)."""
+    import re
+    svg = open(os.path.join(OUT, "dtswiss_logo_official.svg")).read()
+    d = " ".join(re.findall(r'\sd="([^"]*)"', svg, re.S))
+    loops = [[(x, -y) for x, y in lp] for lp in svg_path_loops(d)]          # SVG y-down -> y-up
+    write_glyphs("dtswiss_glyphs.json", loops, "DT Swiss official logo SVG (dtswiss.com)")
+
+
+def build_dt350(px=600):
+    """'350' hub print. The owner's photo (dtswiss_ref.png) is worn and oblique, so the digits are drawn
+    clean from its measurements: heavy weight (stroke ~0.26 of the height), flat-topped 3, 5 with a flat
+    top and straight stem, tall stadium 0 with a stadium counter; gap ~0.10 of the height."""
+    from PIL import ImageDraw
+    H, t = px, int(px * 0.26)
+    w3, w5, w0, gap = int(H * 0.74), int(H * 0.74), int(H * 0.62), int(H * 0.10)
+    W = w3 + w5 + w0 + 2 * gap + 40
+    im = Image.new("L", (W, H + 40), 0)
+    d = ImageDraw.Draw(im)
+    ox, oy = 20, 20
+
+    def bowl(x0, w):                                   # lower bowl, open toward the upper left
+        cy = oy + H * 0.64
+        box = (x0, oy + H * 0.30, x0 + w, oy + H)
+        d.ellipse(box, fill=255)
+        d.ellipse((box[0] + t, box[1] + t, box[2] - t, box[3] - t), fill=0)
+        # open the bowl's upper-left quadrant (the 3's and 5's lower terminal sits at the lower left)
+        d.polygon([(x0 - 2, oy + H * 0.30), (x0 + w * 0.48, oy + H * 0.30), (x0 + w * 0.48, cy),
+                   (x0 - 2, oy + H * 0.80)], fill=0)
+    # 3: flat top bar, diagonal down to the waist, lower bowl
+    x = ox
+    bowl(x, w3)
+    d.rectangle((x + w3 * 0.04, oy, x + w3 * 0.96, oy + t), fill=255)
+    d.polygon([(x + w3 * 0.96, oy), (x + w3 * 0.96, oy + t * 1.15), (x + w3 * 0.50 + t * 0.4, oy + H * 0.47),
+               (x + w3 * 0.50 - t * 0.9, oy + H * 0.47), (x + w3 * 0.96 - t * 1.4, oy + t)], fill=255)
+    d.rectangle((x + w3 * 0.30, oy + H * 0.40, x + w3 * 0.62, oy + H * 0.40 + t * 0.85), fill=255)
+    # 5: flat top bar, straight left stem, lower bowl
+    x = ox + w3 + gap
+    bowl(x, w5)
+    d.rectangle((x + w5 * 0.06, oy, x + w5 * 0.98, oy + t), fill=255)
+    d.rectangle((x + w5 * 0.06, oy, x + w5 * 0.06 + t, oy + H * 0.52), fill=255)
+    d.rectangle((x + w5 * 0.06, oy + H * 0.36, x + w5 * 0.58, oy + H * 0.36 + t), fill=255)
+    # 0: tall stadium with a stadium counter
+    x = ox + w3 + w5 + 2 * gap
+    d.rounded_rectangle((x, oy, x + w0, oy + H), radius=w0 // 2, fill=255)
+    d.rounded_rectangle((x + t, oy + t, x + w0 - t, oy + H - t), radius=(w0 - 2 * t) // 2, fill=0)
+    loops = []
+    for lp in boundary_loops(im):
+        if abs(area(lp)) < 200:
+            continue
+        pts = dp_closed([(x_, (H + 40) - y_) for x_, y_ in lp], 1.2)
+        loops.append(smooth_curves(pts, sharp_deg=40, iters=2))
+    write_glyphs("dt350_glyphs.json", loops, "drawn from dtswiss_ref.png measurements (photo too worn to trace)")
+
+
 if __name__ == "__main__":
     import sys as _sys
+    if "--dtswiss" in _sys.argv:
+        trace_dtswiss_logo()
+        build_dt350()
+        _sys.exit(0)
     if "--endurace" in _sys.argv:
         trace_endurace()
     else:
