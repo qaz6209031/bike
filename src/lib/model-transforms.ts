@@ -53,3 +53,15 @@ export function fittedCameraPosition(dimensions: Dimensions, direction: Vector3,
   }
   return forward.multiplyScalar(distance * margin);
 }
+
+/**
+ * World-space offset for "Move the View" (Blender's hand / Shift+MMB pan): the picture follows the pointer,
+ * so dragging right/down moves the scene right/down. Matches OrbitControls' screen-space panning: a drag
+ * across the full viewport height moves the view by the visible height at the orbit target.
+ */
+export function panOffset(position: Vector3, target: Vector3, right: Vector3, up: Vector3, fov: number,
+                          viewportHeight: number, dx: number, dy: number) {
+  const visibleHeight = 2 * position.distanceTo(target) * Math.tan(fov * Math.PI / 360);
+  const perPixel = visibleHeight / Math.max(1, viewportHeight);
+  return right.clone().normalize().multiplyScalar(-dx * perPixel).addScaledVector(up.clone().normalize(), dy * perPixel);
+}

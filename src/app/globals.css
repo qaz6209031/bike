@@ -167,3 +167,7 @@ html:has(.phone-shell), body:has(.phone-shell) { height: 100%; overflow: hidden;
 .rotate-glyph { color: var(--accent); animation: rotate-hint 2.4s ease-in-out infinite; }
 @keyframes rotate-hint { 0%, 25% { transform: rotate(0); } 55%, 85% { transform: rotate(-90deg); } 100% { transform: rotate(0); } }
 @media (prefers-reduced-motion: reduce) { .phone-spin.spinning svg, .rotate-glyph { animation: none; } }
+
+/* Blender "Move the View" hand: grab cursor, and no touch scrolling while it is dragged. */
+.camera-tools .pan-handle { cursor: grab; touch-action: none; }
+.camera-tools .pan-handle:active { cursor: grabbing; }

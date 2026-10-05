@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Box3, Group, Mesh, MeshStandardMaterial, Quaternion, TorusGeometry, Vector3 } from "three";
-import { fittedCameraPosition, modelBounds, wheelPivot, type Dimensions } from "../src/lib/model-transforms.ts";
+import { fittedCameraPosition, modelBounds, panOffset, wheelPivot, type Dimensions } from "../src/lib/model-transforms.ts";
 
 test("an unmarked, rotated wheel gets a centred pivot without moving its geometry", () => {
   const scene = new Group();
@@ -67,4 +67,19 @@ for (const aspect of [0.55, 1, 1.8]) {
 test("empty geometry fails cleanly instead of producing infinite scale", () => {
   assert.throws(() => modelBounds(new Group()), /empty or invalid/);
   assert.throws(() => fittedCameraPosition([0, 0, 0], new Vector3(0, 0, 1), 1), RangeError);
+});
+
+test("moving the view drags the scene with the pointer at the orbit target's depth", () => {
+  const position = new Vector3(0, 0, 4), target = new Vector3(0, 0, 0);
+  const right = new Vector3(1, 0, 0), up = new Vector3(0, 1, 0);
+  const fov = 37, height = 800;
+  const visible = 2 * 4 * Math.tan(fov * Math.PI / 360);
+  // a full-height drag downward moves the camera up by the visible height, so the bike slides down with it
+  const down = panOffset(position, target, right, up, fov, height, 0, height);
+  assert.ok(down.distanceTo(new Vector3(0, visible, 0)) < 1e-9);
+  // dragging right moves the camera left; speed scales with distance to the target, not with width
+  const across = panOffset(position, target, right, up, fov, height, 200, 0);
+  assert.ok(across.distanceTo(new Vector3(-visible / 4, 0, 0)) < 1e-9);
+  const far = panOffset(new Vector3(0, 0, 8), target, right, up, fov, height, 200, 0);
+  assert.ok(Math.abs(far.x - 2 * across.x) < 1e-9);
 });

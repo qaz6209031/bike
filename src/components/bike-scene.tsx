@@ -1,19 +1,21 @@
 "use client";
 
-import { memo, Suspense, useEffect, useMemo, useRef } from "react";
+import { memo, Suspense, useEffect, useMemo, useRef, type RefObject } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { ContactShadows, Environment, OrbitControls, useGLTF } from "@react-three/drei";
-import { AdditiveBlending, DataTexture, LinearFilter, Mesh, MeshStandardMaterial, RGBAFormat, Vector3, type Object3D, type Color } from "three";
+import { AdditiveBlending, DataTexture, LinearFilter, MOUSE, Mesh, MeshStandardMaterial, PerspectiveCamera, RGBAFormat, Vector3, type Object3D, type Color } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three/addons/controls/OrbitControls.js";
 import { asset } from "@/lib/base-path";
 import { ENVIRONMENT_URL, MODEL_URL, PARTS, UPGRADE_PARTS, partObjectNames, type CameraView, type PartName } from "@/lib/parts";
 import type { Theme } from "@/lib/theme";
-import { fittedCameraPosition, modelBounds, wheelPivot, type Dimensions } from "@/lib/model-transforms";
+import { fittedCameraPosition, modelBounds, panOffset, wheelPivot, type Dimensions } from "@/lib/model-transforms";
 import { radiansToRpm, type WheelDrive } from "@/lib/wheel-physics";
 import type { FreehubAudio } from "@/lib/freehub-audio";
 
 export type ModelInfo = { parts: string[]; meshes: number; dimensions: [number, number, number]; frameSize: string | null };
 export type CameraCommand = { kind: "reset" | "in" | "out"; sequence: number };
+/** Imperative camera moves for DOM controls outside the Canvas (the "Move the view" hand). */
+export type CameraNavigation = { pan: (dx: number, dy: number) => void };
 export type SceneProps = {
   url?: string;
   theme: Theme;
@@ -28,6 +30,7 @@ export type SceneProps = {
   onReady: (info: ModelInfo) => void;
   onStats: (stats: { front: number; rear: number; sound: boolean }) => void;
   dimensions?: Dimensions;
+  navigationRef?: RefObject<CameraNavigation | null>;
 };
 
 function highlightPart(object: Object3D, materials: Map<MeshStandardMaterial, { emissive: Color; intensity: number }>, selected: PartName | null, theme: Theme) {
@@ -164,11 +167,41 @@ const Model = memo(function Model({ url = asset(MODEL_URL), theme, selected, dri
   </>;
 });
 
-function CameraRig({ view, cameraCommand, dimensions, framing = 1.12 }: Pick<SceneProps, "view" | "cameraCommand" | "dimensions" | "framing">) {
+function CameraRig({ view, cameraCommand, dimensions, framing = 1.12, navigationRef }: Pick<SceneProps, "view" | "cameraCommand" | "dimensions" | "framing" | "navigationRef">) {
   const camera = useThree((state) => state.camera);
   const controls = useThree((state) => state.controls) as OrbitControlsImpl | null;
   const size = useThree((state) => state.size);
+  const canvas = useThree((state) => state.gl.domElement);
   const reset = useRef<() => void>(() => {});
+  // Blender-style "Move the View": pan the camera and its orbit target together, picture follows the pointer.
+  useEffect(() => {
+    if (!controls || !(camera instanceof PerspectiveCamera)) return;
+    const pan = (dx: number, dy: number) => {
+      camera.updateMatrixWorld();
+      const right = new Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+      const up = new Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+      const move = panOffset(camera.position, controls.target, right, up, camera.fov, canvas.clientHeight, dx, dy);
+      camera.position.add(move);
+      controls.target.add(move);
+      controls.update();
+    };
+    if (navigationRef) navigationRef.current = { pan };
+    // Shift + scroll / two-finger trackpad swipe pans, as in Blender. Captured on the canvas' parent so
+    // OrbitControls never sees it as a zoom.
+    const host = canvas.parentElement;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.shiftKey || event.ctrlKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const line = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1;
+      pan(-event.deltaX * line, -event.deltaY * line);
+    };
+    host?.addEventListener("wheel", onWheel, { capture: true, passive: false });
+    return () => {
+      host?.removeEventListener("wheel", onWheel, { capture: true });
+      if (navigationRef?.current?.pan === pan) navigationRef.current = null;
+    };
+  }, [camera, controls, canvas, navigationRef]);
   useEffect(() => {
     const directions = { perspective: [1.6, 0.85, 3.4], side: [0, 0.10, 1], front: [1, 0.10, 0.035] };
     const aspect = size.width / Math.max(1, size.height);
@@ -212,7 +245,9 @@ export default function BikeScene(props: SceneProps) {
       <Environment files={asset(ENVIRONMENT_URL)} environmentIntensity={0.8} />
       <Model {...props} />
     </Suspense>
-    <OrbitControls makeDefault enableDamping dampingFactor={0.08} minDistance={1.5} maxDistance={24} maxPolarAngle={Math.PI * 0.53} rotateSpeed={0.7} zoomSpeed={0.9} />
-    <CameraRig view={props.view} cameraCommand={props.cameraCommand} dimensions={props.dimensions} framing={props.framing} />
+    {/* Blender navigation: middle drag orbits, Shift + middle (or left) drag pans; right drag also pans. */}
+    <OrbitControls makeDefault enableDamping dampingFactor={0.08} minDistance={1.5} maxDistance={24} maxPolarAngle={Math.PI * 0.53} rotateSpeed={0.7} zoomSpeed={0.9}
+      mouseButtons={{ LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.ROTATE, RIGHT: MOUSE.PAN }} />
+    <CameraRig view={props.view} cameraCommand={props.cameraCommand} dimensions={props.dimensions} framing={props.framing} navigationRef={props.navigationRef} />
   </Canvas>;
 }

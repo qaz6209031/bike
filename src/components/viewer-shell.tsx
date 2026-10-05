@@ -2,13 +2,13 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { Component, useCallback, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useRef, useState, type ErrorInfo, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { FreehubAudio } from "@/lib/freehub-audio";
 import { WheelDrive, rpmToRadians, type WheelTarget } from "@/lib/wheel-physics";
 import { asset } from "@/lib/base-path";
 import { BIKE_SIZE, COMPONENT_SOURCE, ENVIRONMENT_URL, MODEL_URL, UPGRADE_PARTS, type CameraView, type PartName } from "@/lib/parts";
 import { setTheme, useTheme } from "@/lib/theme";
-import type { CameraCommand, ModelInfo } from "./bike-scene";
+import type { CameraCommand, CameraNavigation, ModelInfo } from "./bike-scene";
 import Icon from "./icons";
 import ModelLoading from "./model-loading";
 
@@ -79,6 +79,8 @@ export default function ViewerShell() {
   const [retry, setRetry] = useState(0);
   const [cameraCommand, setCameraCommand] = useState<CameraCommand>({ kind: "reset", sequence: 0 });
   const [help, setHelp] = useState(false);
+  const navigationRef = useRef<CameraNavigation | null>(null);
+  const panPointer = useRef<{ id: number; x: number; y: number } | null>(null);
   const mounted = useRef(false);
   const triedFullscreen = useRef(false);
   const mode = usePhoneMode();
@@ -114,6 +116,29 @@ export default function ViewerShell() {
 
   function cameraAction(kind: CameraCommand["kind"]) {
     setCameraCommand((previous) => ({ kind, sequence: previous.sequence + 1 }));
+  }
+
+  // Blender's "Move the View" hand: press and drag it to pan the view; arrow keys pan when it is focused.
+  function startPan(event: PointerEvent<HTMLButtonElement>) {
+    if (event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    panPointer.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  }
+  function dragPan(event: PointerEvent<HTMLButtonElement>) {
+    const last = panPointer.current;
+    if (!last || last.id !== event.pointerId) return;
+    navigationRef.current?.pan(event.clientX - last.x, event.clientY - last.y);
+    panPointer.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  }
+  function endPan(event: PointerEvent<HTMLButtonElement>) {
+    if (panPointer.current?.id === event.pointerId) panPointer.current = null;
+  }
+  function keyPan(event: KeyboardEvent<HTMLButtonElement>) {
+    const step = event.shiftKey ? 96 : 24;
+    const move = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[event.key];
+    if (!move) return;
+    event.preventDefault();
+    navigationRef.current?.pan(move[0], move[1]);
   }
 
   async function toggleSound() {
@@ -188,7 +213,7 @@ export default function ViewerShell() {
         <div className="model-heading"><p className="eyebrow">CANYON / PERSONAL BUILD</p><h1>Endurace<span className="title-dot">.</span></h1><p className="model-subtitle">CF SLX 7 AXS · Size {BIKE_SIZE}</p><span className="paint-chip"><i />Crystal White</span></div>
         <div className="canvas-container" data-testid="viewer-canvas">
           <ViewerBoundary key={retry} onRetry={reloadModel} onFailure={onFailure}>
-            <BikeScene theme={theme} view={view} selected={selectedPart?.name ?? null} drive={drive} audio={audio} cameraCommand={cameraCommand} onSelect={select} onReady={onReady} onStats={onStats} dimensions={modelInfo.dimensions} />
+            <BikeScene theme={theme} view={view} selected={selectedPart?.name ?? null} drive={drive} audio={audio} cameraCommand={cameraCommand} onSelect={select} onReady={onReady} onStats={onStats} dimensions={modelInfo.dimensions} navigationRef={navigationRef} />
             {loadState === "loading" ? <ModelLoading /> : null}
           </ViewerBoundary>
         </div>
@@ -198,9 +223,9 @@ export default function ViewerShell() {
         </div>
         <div className="stage-bottom">
           <button className="interaction-hint" aria-expanded={help} aria-controls="viewer-help" onClick={() => setHelp((previous) => !previous)}><Icon name="orbit" /><span><span className="desktop-hint">Drag to explore<span className="desktop-only"> · Scroll to zoom</span></span><span className="mobile-only">Drag · Pinch to zoom</span></span><Icon name="info" size={14} /></button>
-          <div className="camera-tools"><button aria-label="Zoom in" onClick={() => cameraAction("in")}><Icon name="plus" /></button><button aria-label="Zoom out" onClick={() => cameraAction("out")}><Icon name="minus" /></button><span /><button aria-label="Reset camera" onClick={() => cameraAction("reset")}><Icon name="reset" /></button></div>
+          <div className="camera-tools"><button className="pan-handle" aria-label="Move the view (drag, or use the arrow keys)" title="Move the view · drag" onPointerDown={startPan} onPointerMove={dragPan} onPointerUp={endPan} onPointerCancel={endPan} onLostPointerCapture={endPan} onKeyDown={keyPan}><Icon name="hand" /></button><span /><button aria-label="Zoom in" onClick={() => cameraAction("in")}><Icon name="plus" /></button><button aria-label="Zoom out" onClick={() => cameraAction("out")}><Icon name="minus" /></button><span /><button aria-label="Reset camera" onClick={() => cameraAction("reset")}><Icon name="reset" /></button></div>
         </div>
-        <div id="viewer-help" className="interaction-help" hidden={!help}><strong>Take a look around</strong><p>Drag with one finger or the left mouse button to orbit. Pinch or scroll to zoom. Use two fingers or the right mouse button to pan. Tap an upgrade or accessory to select it.</p><button onClick={() => setHelp(false)}>Got it <Icon name="check" size={14} /></button></div>
+        <div id="viewer-help" className="interaction-help" hidden={!help}><strong>Take a look around</strong><p>Drag with one finger, the left or the middle mouse button to orbit. Pinch or scroll to zoom. To move the view, drag the hand button, use two fingers, the right mouse button, Shift + drag, or Shift + scroll. Tap an upgrade or accessory to select it.</p><button onClick={() => setHelp(false)}>Got it <Icon name="check" size={14} /></button></div>
         <div className="stage-watermark" aria-hidden="true">ENGINEERED TO EXPLORE</div>
       </section>
 
