@@ -1369,7 +1369,7 @@ cyl("stem_topcap_torx", cap_top + v(0, 0, 1.25), 2.4, 0.2, DARK, axis="Z", verts
 # section rounds off (-> 25mm round) through the bend, hood area and drop (owner photo IMG_6938).
 TAPE_START = 150
 tops_y = list(range(-TAPE_START, TAPE_START + 1, 5))
-sweep("handlebar_tops", [bar_c + v(0, y, 0) for y in tops_y],
+sweep("handlebar_tops", [bar_c + v(0, y, -3 * max(0.0, 1 - abs(y) / 60)) for y in tops_y],  # flat top; extra depth hangs below
       [32 + 12 * max(0.0, 1 - abs(y) / 60) for y in tops_y], [16 + 6 * max(0.0, 1 - abs(y) / 60) for y in tops_y],
       CARBON, up0=v(0, 0, 1))
 # one-piece T-bar: stem + tops fused, junctions smoothed into fillets (no seam/step at the bar)
@@ -1455,41 +1455,54 @@ for s, side in ((-1, "R"), (1, "L")):
             rot=along(pd.normalized()), bevel=0.3)
 
 # ---------------------------------------------------------------- Canyon GEAR GROOVE mount + Bryton Rider S510
-# Canyon GEAR GROOVE mount (IMG_6971): lens-shaped plate bolted on the stem top, overlapping the bar,
-# with two slim arms running forward to the computer cradle.
-def lens_loop(length, half_w, n=40):
-    pts = []
-    for k in range(n):
-        t_ = 2 * math.pi * k / n
-        c_, s_ = math.cos(t_), math.sin(t_)
-        pts.append((length / 2 * c_, half_w * math.copysign(abs(s_) ** 0.75, s_)))
-    return pts
+# Canyon GEAR GROOVE mount (IMG_6971 top view): the plate sits IN the stem's groove, flush with the stem /
+# bar top (only a thin seam shows): rounded-rear strip ~28 mm wide from ~28 mm ahead of the steerer to the
+# bar's front edge, one flush Torx bolt in the round end; two slim arms leave the bar front to the computer.
 def surface_z(x_mm, y_mm=0.0):
-    """Top of the fused T-bar (evaluated mesh) at world x, y (mm), by casting a ray straight down."""
+    """Top of the fused T-bar (evaluated mesh) at world x, y (mm), by casting a ray straight down.
+    If the ray falls just off the bar's rounded edge, step back toward the stem until it hits."""
     dg = bpy.context.evaluated_depsgraph_get()
-    hit, loc, *_ = scene.ray_cast(dg, Vector((x_mm * S, y_mm * S, 2.0)), Vector((0, 0, -1)))
-    while hit and bpy.context.scene.objects.get("stem_tbar") is not None and not _[2].name.startswith("stem_tbar"):
-        hit, loc, *_ = scene.ray_cast(dg, loc - Vector((0, 0, 1e-4)), Vector((0, 0, -1)))
-    return loc.z / S
-gg_mid = stem_base + stem_dir * (L_ - 26)
-xa, xb = gg_mid.x - 22, gg_mid.x + 22                                   # plate rear / front contact points
-za = max(surface_z(xa, -10), surface_z(xa, 10))
-zb = max(surface_z(xb, -10), surface_z(xb, 10))
-gg_fwd = v(xb - xa, 0, zb - za).normalized()
-gg_n = v(-gg_fwd.z, 0, gg_fwd.x)                                         # plate normal (tilted with the stem)
-gg_o = v(gg_mid.x, 0, (za + zb) / 2) + gg_n * 0.3
-extrude_profile("gear_groove_plate", [lens_loop(58, 16)], 0, 4, CARBON, origin=gg_o,
-                axes=(gg_fwd, v(0, 1, 0), gg_n))
-for nm, off, r_, d_, m_ in (("gear_groove_plate_washer", 4.05, 6.2, 0.3, AXS_GREY),
-                            ("gear_groove_bolt", 4.3, 4.2, 0.8, METAL), ("gear_groove_bolt_torx", 4.75, 1.8, 0.2, DARK)):
-    ob_ = cyl(nm, gg_o - gg_fwd * 6 + gg_n * off, r_, d_, m_, axis="Z", verts=6 if "torx" in nm else 64)
-    ob_.rotation_euler = Vector((0, 0, 1)).rotation_difference(gg_n).to_euler()
+    for back in range(0, 40):
+        x_try = x_mm - back * 0.5
+        hit, loc, *_ = scene.ray_cast(dg, Vector((x_try * S, y_mm * S, 2.0)), Vector((0, 0, -1)))
+        while hit and not _[2].name.startswith("stem_tbar"):
+            hit, loc, *_ = scene.ray_cast(dg, loc - Vector((0, 0, 1e-4)), Vector((0, 0, -1)))
+        if hit:
+            return loc.z / S
+    raise RuntimeError(f"surface_z: no T-bar surface near x={x_mm:.1f}, y={y_mm:.1f}")
+
+GG_HALF_W = 14.0
+gg_rear = stem_base.x + 28.0                                           # rear of the rounded end
+gg_front = bar_c.x + 15.0                                              # where the bar's flat top ends (front edge is rounded)
+gg_bolt = gg_rear + GG_HALF_W                                          # bolt at the centre of the round end
+
+def gg_outline(inset=0.0, n_arc=20, n_side=40):
+    r_ = GG_HALF_W - inset
+    pts = [(gg_bolt + r_ * math.cos(math.pi / 2 + math.pi * k / n_arc), r_ * math.sin(math.pi / 2 + math.pi * k / n_arc))
+           for k in range(n_arc + 1)]                                  # rear half circle: +y -> -y via the back
+    pts += [(gg_bolt + (gg_front - inset - gg_bolt) * k / n_side, -r_) for k in range(1, n_side + 1)]
+    pts += [(gg_front - inset, -r_ + 2 * r_ * k / 8) for k in range(1, 8)]
+    pts += [(gg_front - inset - (gg_front - inset - gg_bolt) * k / n_side, r_) for k in range(0, n_side)]
+    return pts
+
+on_top = lambda lift: (lambda x, y: v(x, y, surface_z(x, y) + lift))
+GG_PLATE = mat("Gear Groove Plate", (0.016, 0.016, 0.018), rough=0.55)
+# plate face (follows the surface, 0.25 mm proud) + a dark seam just outside its edge
+place("gear_groove_plate", shapes_bmesh([gg_outline(0.4)], cuts=10), on_top(0.25), GG_PLATE)
+seam = [v(x, y, surface_z(x, y) + 0.12) for x, y in gg_outline(-0.2)]
+ribbon("gear_groove_seam", seam, 0.7, 0.2, DARK, lambda p, t: v(0, 0, 1), closed=True)
+bz = surface_z(gg_bolt, 0)
+cyl("gear_groove_bolt", v(gg_bolt, 0, bz + 0.3), 3.8, 0.5, METAL, axis="Z")
+cyl("gear_groove_bolt_torx", v(gg_bolt, 0, bz + 0.58), 1.7, 0.1, DARK, axis="Z", verts=6)
 comp_c = bar_c + v(72, 0, 13)
-for k, yy in enumerate((-9, 9)):                                       # arms: plate front -> computer cradle
-    arm = [gg_o + gg_fwd * 24 + gg_n * 2 + v(0, yy, 0), comp_c + v(-12, yy, -9)]
-    ribbon(f"gear_groove_arm_{k}", [arm[0] + (arm[-1] - arm[0]) * (j / 12) for j in range(13)], 5, 3, CARBON,
+fz = surface_z(gg_front - 1.0, 0)
+for k, yy in enumerate((-(GG_HALF_W - 2.0), GG_HALF_W - 2.0)):          # arms at the plate edges
+    arm = [v(gg_front - 2.0, yy, fz - 1.6), v(gg_front + 6.0, yy, fz - 2.2), comp_c + v(-20, yy, -9.5),
+           comp_c + v(-10, yy, -9.5)]
+    ribbon(f"gear_groove_arm_{k}", [arm[0] + (arm[1] - arm[0]) * (j / 4) for j in range(4)] +
+           [arm[1] + (arm[2] - arm[1]) * (j / 8) for j in range(8)] + [arm[2], arm[3]], 4, 3, GG_PLATE,
            lambda p, t: v(0, 0, 1))
-box("gear_groove_cradle", comp_c + v(-6, 0, -9.5), (26, 30, 3), CARBON, bevel=1.2)
+box("gear_groove_cradle", comp_c + v(-6, 0, -9.5), (26, 30, 3), GG_PLATE, bevel=1.2)
 tilt = (0, math.radians(-8), 0)                                # screen tilted toward rider
 
 def image_mat(name, fname, emit=0.0, alpha=False, rough=0.2):
