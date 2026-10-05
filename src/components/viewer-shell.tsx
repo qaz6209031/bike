@@ -27,6 +27,41 @@ class ViewerBoundary extends Component<{ children: ReactNode; onRetry: () => voi
 }
 
 const initialInfo: ModelInfo = { parts: [], meshes: 0, dimensions: [0, 0, 0], frameSize: null };
+const PHONE_SPIN_RPM = 180;
+const PHONE_FRAMING = 0.82;              // the box fit is loose at 3/4 view; fill the landscape screen
+
+/** Phones (touch screen, shorter side <= 600 px) get a landscape-only, model-first layout. */
+function usePhoneMode() {
+  const [mode, setMode] = useState<{ phone: boolean; portrait: boolean } | null>(null);
+  useEffect(() => {
+    const coarse = window.matchMedia("(pointer: coarse)");
+    const portrait = window.matchMedia("(orientation: portrait)");
+    const update = () => setMode({
+      phone: new URLSearchParams(window.location.search).has("phone")          // ?phone forces it (testing)
+        || (coarse.matches && Math.min(window.screen.width, window.screen.height) <= 600),
+      portrait: portrait.matches,
+    });
+    update();
+    coarse.addEventListener("change", update);
+    portrait.addEventListener("change", update);
+    window.addEventListener("resize", update);
+    return () => {
+      coarse.removeEventListener("change", update);
+      portrait.removeEventListener("change", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+  return mode;
+}
+
+/** On browsers that allow it (Android Chrome), go fullscreen and lock to landscape. iOS ignores this. */
+function enterLandscapeFullscreen() {
+  const root = document.documentElement;
+  if (!document.fullscreenEnabled || document.fullscreenElement || !root.requestFullscreen) return;
+  root.requestFullscreen({ navigationUI: "hide" })
+    .then(() => (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.("landscape"))
+    .catch(() => undefined);
+}
 
 export default function ViewerShell() {
   const [drive] = useState(() => new WheelDrive());
@@ -45,6 +80,8 @@ export default function ViewerShell() {
   const [cameraCommand, setCameraCommand] = useState<CameraCommand>({ kind: "reset", sequence: 0 });
   const [help, setHelp] = useState(false);
   const mounted = useRef(false);
+  const triedFullscreen = useRef(false);
+  const mode = usePhoneMode();
 
   useEffect(() => {
     mounted.current = true;
@@ -81,6 +118,10 @@ export default function ViewerShell() {
 
   async function toggleSound() {
     if (sound === "on") { audio.disable(); setSound("off"); return; }
+    await enableSound();
+  }
+
+  async function enableSound() {
     setSound("loading");
     setAudioError("");
     try {
@@ -96,6 +137,13 @@ export default function ViewerShell() {
     }
   }
 
+  /** Phone: the one button. Its tap is the user gesture that turns sound on (browsers need one). */
+  function spinRearWheel() {
+    if (sound !== "on" && sound !== "loading") void enableSound();   // audio.enable() runs synchronously here
+    drive.setVelocity("RearWheel", rpmToRadians(PHONE_SPIN_RPM));
+    if (!triedFullscreen.current) { triedFullscreen.current = true; enterLandscapeFullscreen(); }
+  }
+
   async function reloadModel() {
     drive.stop();
     audio.pause();
@@ -105,6 +153,27 @@ export default function ViewerShell() {
     setModelInfo(initialInfo);
     setLoadState("loading");
     setRetry((previous) => previous + 1);
+  }
+
+  if (mode === null) return <div className="phone-pending" />;
+
+  if (mode.phone) {
+    const canSpin = ready && modelInfo.parts.includes("RearWheel");
+    return <div className="phone-shell">
+      <div className="phone-canvas" aria-label="Interactive 3D bicycle viewer">
+        <ViewerBoundary key={retry} onRetry={reloadModel} onFailure={onFailure}>
+          <BikeScene theme={theme} view="perspective" framing={PHONE_FRAMING} selected={null} drive={drive} audio={audio} cameraCommand={cameraCommand} onSelect={() => undefined} onReady={onReady} onStats={onStats} dimensions={modelInfo.dimensions} />
+          {loadState === "loading" ? <ModelLoading /> : null}
+        </ViewerBoundary>
+      </div>
+      <button className={`phone-spin ${stats.rear > 0 ? "spinning" : ""}`} disabled={!canSpin} onClick={spinRearWheel}>
+        <Icon name="wheel" size={22} />Spin rear wheel
+      </button>
+      {mode.portrait ? <div className="rotate-notice" role="alert">
+        <span className="rotate-glyph"><Icon name="rotate" size={56} /></span>
+        <strong>Rotate your phone</strong><p>The bike viewer works in landscape.</p>
+      </div> : null}
+    </div>;
   }
 
   return <div className="studio-shell">

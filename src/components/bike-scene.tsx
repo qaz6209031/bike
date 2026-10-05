@@ -23,6 +23,8 @@ export type SceneProps = {
   audio: FreehubAudio;
   cameraCommand: CameraCommand;
   onSelect: (part: PartName | null) => void;
+  /** Camera distance multiplier over the bounding-box fit (1.12 default; smaller = bike fills more). */
+  framing?: number;
   onReady: (info: ModelInfo) => void;
   onStats: (stats: { front: number; rear: number; sound: boolean }) => void;
   dimensions?: Dimensions;
@@ -162,7 +164,7 @@ const Model = memo(function Model({ url = asset(MODEL_URL), theme, selected, dri
   </>;
 });
 
-function CameraRig({ view, cameraCommand, dimensions }: Pick<SceneProps, "view" | "cameraCommand" | "dimensions">) {
+function CameraRig({ view, cameraCommand, dimensions, framing = 1.12 }: Pick<SceneProps, "view" | "cameraCommand" | "dimensions" | "framing">) {
   const camera = useThree((state) => state.camera);
   const controls = useThree((state) => state.controls) as OrbitControlsImpl | null;
   const size = useThree((state) => state.size);
@@ -172,7 +174,7 @@ function CameraRig({ view, cameraCommand, dimensions }: Pick<SceneProps, "view" 
     const aspect = size.width / Math.max(1, size.height);
     const bounds: Dimensions = dimensions && Math.max(...dimensions) > 0
       ? dimensions : [4.6, 2.9, 0.9];
-    const position = fittedCameraPosition(bounds, new Vector3(...directions[view] as Dimensions), aspect);
+    const position = fittedCameraPosition(bounds, new Vector3(...directions[view] as Dimensions), aspect, 37, framing);
     reset.current = () => {
       camera.position.copy(position);
       camera.lookAt(0, 0, 0);
@@ -180,7 +182,7 @@ function CameraRig({ view, cameraCommand, dimensions }: Pick<SceneProps, "view" 
       controls?.update();
     };
     reset.current();
-  }, [camera, controls, view, size.width, size.height, dimensions]);
+  }, [camera, controls, view, size.width, size.height, dimensions, framing]);
   useEffect(() => {
     if (cameraCommand.kind === "reset") reset.current();
     else {
@@ -208,7 +210,7 @@ export default function BikeScene(props: SceneProps) {
       <Model {...props} />
     </Suspense>
     <OrbitControls makeDefault regress enableDamping dampingFactor={0.08} minDistance={1.5} maxDistance={24} maxPolarAngle={Math.PI * 0.53} rotateSpeed={0.7} zoomSpeed={0.9} />
-    <CameraRig view={props.view} cameraCommand={props.cameraCommand} dimensions={props.dimensions} />
+    <CameraRig view={props.view} cameraCommand={props.cameraCommand} dimensions={props.dimensions} framing={props.framing} />
     <AdaptiveDpr pixelated />
   </Canvas>;
 }

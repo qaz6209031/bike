@@ -36,7 +36,7 @@ export function wheelPivot(scene: Object3D, name: string) {
 }
 
 /** Fit every corner of the actual bounds, including depth, into a perspective view. */
-export function fittedCameraPosition(dimensions: Dimensions, direction: Vector3, aspect: number, fov = 37) {
+export function fittedCameraPosition(dimensions: Dimensions, direction: Vector3, aspect: number, fov = 37, margin = 1.12) {
   if (!dimensions.every((value) => Number.isFinite(value) && value >= 0) ||
       Math.max(...dimensions) <= 0 || !Number.isFinite(aspect) || aspect <= 0) {
     throw new RangeError("Camera fitting requires finite model bounds and a positive aspect ratio.");
@@ -51,5 +51,5 @@ export function fittedCameraPosition(dimensions: Dimensions, direction: Vector3,
     const projected = Math.max(Math.abs(corner.dot(right)) / (tan * aspect), Math.abs(corner.dot(up)) / tan);
     distance = Math.max(distance, corner.dot(forward) + projected);
   }
-  return forward.multiplyScalar(distance * 1.12);
+  return forward.multiplyScalar(distance * margin);
 }
