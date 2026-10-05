@@ -832,6 +832,9 @@ for s, side in ((-1, "R"), (1, "L")):
     ctrl = [crown_top + hd * 3 + v(0, s * 16, 0), crown_top + hd * 20 + v(0, s * 25, 0),
             crown_top + hd * 42 + v(0, s * 34, 0), crown_top + hd * 95 + hn * (fork_offset * 0.12) + v(0, s * 37.5, 0),
             mid + v(0, s * 43, 0), front + v(0, s * 50, 0)]
+    _down = front - mid
+    _down.y = 0
+    ctrl.append(front + _down.normalized() * 12 + v(0, s * 50, 0))     # dropout wraps past the axle
     path = [Vector(q) for q in catmull([tuple(c) for c in ctrl], 48)]
     n_ = len(path)
     lat = [22 - 11 * (k / (n_ - 1)) ** 1.1 for k in range(n_)]         # lateral thickness 22 -> 11 mm
@@ -846,7 +849,9 @@ fuse("fork", ["fork_crown", "fork_blade_R", "fork_blade_L"])
 
 # ---------------------------------------------------------------- wheels
 ROTOR_STEEL = mat("Rotor Steel", (0.62, 0.62, 0.63), rough=0.38, metal=0.65)   # brushed: reads silver from any angle
-ROTOR_Y = 53.1                                          # inboard face of the rotor (non-drive side)
+ROTOR_Y = 49.0                                          # rear: inboard face of the rotor, just inside the stays
+FRONT_ROTOR_Y = 37.5                                    # front 100x12: rotor outboard face 10.7 mm inside the fork
+                                                        # leg's inner face (50 mm), i.e. 37.5..39.3
 
 def stadium_loop(cx, cz, ang, length, width, n=6):
     """Elongated slot centred at (cx, cz), long axis at angle ang."""
@@ -861,7 +866,7 @@ def stadium_loop(cx, cz, ang, length, width, n=6):
                         cz + uz * (end * half + r * math.cos(a)) + pz * r * math.sin(a)))
     return pts
 
-def paceline_rotor(name, c):
+def paceline_rotor(name, c, rotor_y=ROTOR_Y):
     """SRAM Paceline 160mm (owner photos IMG_6943/6944): steel track with two staggered rows of
     tangential slots, 6 curved arms to a centre ring, 6 silver Torx bolts on a black 6-bolt hub."""
     loops = [circle_loop(80, 160), circle_loop(17, 40)]
@@ -886,9 +891,9 @@ def paceline_rotor(name, c):
         a_s, a_e = th1 - hw / r0, th0 + hw / r0
         win += [(r0 * math.cos(a_s + (a_e - a_s) * j / 6), r0 * math.sin(a_s + (a_e - a_s) * j / 6)) for j in range(1, 6)]
         loops.append(win)
-    extrude_profile(f"{name}_rotor", loops, ROTOR_Y, 1.8, ROTOR_STEEL, origin=c)
-    y_out = ROTOR_Y + 1.8
-    cyl(f"{name}_hub_flange", c + v(0, ROTOR_Y - 3, 0), 25, 6, DARK)
+    extrude_profile(f"{name}_rotor", loops, rotor_y, 1.8, ROTOR_STEEL, origin=c)
+    y_out = rotor_y + 1.8
+    cyl(f"{name}_hub_flange", c + v(0, rotor_y - 3, 0), 25, 6, DARK)
     cyl(f"{name}_hub_cap", c + v(0, y_out + 2, 0), 13, 4, DARK)
     for k in range(6):                                  # 44mm BCD Torx bolts
         a = 2 * math.pi * k / 6 + math.pi / 6
@@ -902,11 +907,11 @@ def paceline_rotor(name, c):
         decal(f"{name}_rotor_print_{off}", txt, FONT_COND, w, 2.4, lambda x, y, cen=cen, d=rad_, u=tan_: cen + d * x + u * y,
               LOGO, cuts=1)
 
-def flat_mount_caliper(name, c, ang_deg, mount_to=None, port_fn=None):
+def flat_mount_caliper(name, c, ang_deg, mount_to=None, port_fn=None, rotor_y=ROTOR_Y):
     """SRAM flat-mount hydraulic caliper straddling the rotor at ang_deg (0 = forward, 90 = up)."""
     a = math.radians(ang_deg)
     rr, tt = v(math.cos(a), 0, math.sin(a)), v(-math.sin(a), 0, math.cos(a))
-    p = c + rr * 70 + v(0, ROTOR_Y + 0.9, 0)
+    p = c + rr * 70 + v(0, rotor_y + 0.9, 0)
     rot = along(tt)
     box(f"{name}_body", p + v(0, 3, 0), (48, 30, 24), CARBON, rot=rot, bevel=5)
     box(f"{name}_bridge", p + rr * 9 + v(0, 3, 0), (40, 32, 7), CARBON, rot=rot, bevel=2.5)
@@ -961,7 +966,40 @@ def dt350_hub(name, c, y_left, y_right):
         glyph_decal(f"{name}_hub_dtswiss_{k}", "dtswiss_glyphs.json", DTSWISS_H,
                     lambda x, yy, f=shell_map: f(x - (DT350_W - DTSWISS_W) / 2 - 0.4, yy - 4.6), DT_PRINT)
 
-def wheel(name, c, y_drive_flange=-34):
+def frame_face_y(c, side):
+    """Outer face of the dropout (mm) at the axle, found by casting a ray from outside toward the axle."""
+    dg = bpy.context.evaluated_depsgraph_get()
+    origin = Vector((c.x * S, side * 0.3, c.z * S))
+    hit, loc, *_ = scene.ray_cast(dg, origin, Vector((0, -side, 0)))
+    while hit and _[2].name not in ("fork", "rear_triangle"):
+        hit, loc, *_ = scene.ray_cast(dg, loc - Vector((0, side * 1e-4, 0)), Vector((0, -side, 0)))
+    if not hit:
+        raise RuntimeError(f"no dropout found at the {'left' if side > 0 else 'right'} axle end of {c}")
+    return abs(loc.y) / S
+
+UDH_OUTER_Y = 74.0                         # rear: outer face of the SRAM UDH hanger the axle passes through
+
+def thru_axle(name, c, axle_print, drive_cap, drive_face_min=0.0):
+    """12 mm thru-axle that ends FLUSH with the dropouts (owner photos IMG_6979-6982): non-drive side a
+    flat black cap with '12 Nm', drive side either a flat cap (rear) or the recessed threaded end (front)."""
+    yl, yr = frame_face_y(c, 1), max(frame_face_y(c, -1), drive_face_min)
+    tube(f"{name}_axle", [c + v(0, -yr + 0.3, 0), c + v(0, yl - 0.3, 0)], 6, DARK)
+    cyl(f"{name}_axle_cap", c + v(0, yl + 0.3, 0), 8.5, 0.9, DARK)                  # flush: 0.75 mm proud
+    decal(f"{name}_axle_cap_print", "12 Nm", FONT_COND, 6.0, 1.9, lambda x, y: c + v(-x, yl + 0.8, y + 3.2),
+          DECAL_WHITE, cuts=1)
+    ribbon(f"{name}_axle_cap_arrow", [c + v(5.2 * math.cos(math.radians(a)), yl + 0.8, 5.2 * math.sin(math.radians(a)))
+                                      for a in range(200, 341, 10)], 0.6, 0.1, DECAL_WHITE, lambda p, t: v(0, 1, 0))
+    decal(f"{name}_axle_dropout_print", axle_print, FONT_COND, 2.0 * len(axle_print) * 0.42, 2.0,
+          lambda x, y: c + v(-x, yl + 0.15, y + 12.5), LOGO, cuts=1)
+    if drive_cap:
+        cyl(f"{name}_axle_cap_drive", c + v(0, -(yr + 0.3), 0), 8.5, 0.9, DARK)
+        cyl(f"{name}_axle_cap_drive_ring", c + v(0, -(yr + 0.8), 0), 4.0, 0.1, AXS_GREY)
+    else:
+        cyl(f"{name}_axle_thread_end", c + v(0, -(yr + 0.05), 0), 5.5, 0.2, METAL)    # flush threaded insert
+        cyl(f"{name}_axle_thread_hole", c + v(0, -(yr + 0.12), 0), 3.4, 0.1, LOGO, verts=6)
+    return yl, yr
+
+def wheel(name, c, y_drive_flange=-34, rotor_y=ROTOR_Y, y_flange_l=36, axle_print="M12 X 1.5", drive_cap=True):
     torus(f"{name}_tire", c, R_BEAD + TIRE_W / 2, TIRE_W / 2, TIRE)
     torus(f"{name}_rim", c, R_BEAD - 21, 21, CARBON, lateral_scale=0.7)  # ED42: 42mm deep
     cu = bpy.data.curves.new(f"{name}_spokes", "CURVE")
@@ -971,7 +1009,7 @@ def wheel(name, c, y_drive_flange=-34):
     for i in range(24):
         a = 2 * math.pi * i / 24
         side = 1 if i % 2 else -1
-        hub_y = 36 if side > 0 else y_drive_flange       # spokes land on the DT 350 flanges
+        hub_y = y_flange_l if side > 0 else y_drive_flange   # spokes land on the DT 350 flanges
         hub = c + v(21 * math.cos(a + 0.3 * side), hub_y, 21 * math.sin(a + 0.3 * side))
         rim = c + v((R_BEAD - 42) * math.cos(a), 0, (R_BEAD - 42) * math.sin(a))
         sp = cu.splines.new("POLY")
@@ -979,13 +1017,9 @@ def wheel(name, c, y_drive_flange=-34):
         sp.points[0].co = (*(hub * S), 1)
         sp.points[1].co = (*(rim * S), 1)
     add(bpy.data.objects.new(f"{name}_spokes", cu), DARK)
-    dt350_hub(name, c, 36, y_drive_flange)
-    cyl(f"{name}_axle", c, 9, 150, DARK)
-    cyl(f"{name}_axle_cap", c + v(0, 75.5, 0), 13, 5, DARK)                       # non-drive end cap
-    decal(f"{name}_axle_cap_print", "12 Nm  M12x1.0", FONT_COND, 18, 2.4,
-          lambda x, y: c + v(-x, 78.1, y + 6.5), DECAL_WHITE, cuts=1)
-    cyl(f"{name}_axle_nut", c + v(0, -75.5, 0), 11, 5, DARK, verts=6)              # drive-side nut
-    paceline_rotor(name, c)
+    dt350_hub(name, c, y_flange_l, y_drive_flange)
+    thru_axle(name, c, axle_print, drive_cap, drive_face_min=UDH_OUTER_Y if drive_cap else 0.0)
+    paceline_rotor(name, c, rotor_y)
     rim_lat = lambda r_: 0.7 * math.sqrt(max(21 ** 2 - (r_ - (R_BEAD - 21)) ** 2, 0))
     tire_lat = lambda r_: math.sqrt(max(16 ** 2 - (r_ - (R_BEAD + 16)) ** 2, 0))
     for side, tag in ((-1, "R"), (1, "L")):
@@ -999,7 +1033,7 @@ def wheel(name, c, y_drive_flange=-34):
                   uv=(TYRE_PRINT_W, TYRE_PRINT_H))
 
 wheel("rear_wheel", rear, y_drive_flange=-18)          # drive flange inboard of the cassette
-wheel("front_wheel", front)
+wheel("front_wheel", front, rotor_y=FRONT_ROTOR_Y, y_flange_l=30, axle_print="M12 X 1.75", drive_cap=False)
 
 # Flat-mount brake calipers (non-drive side): front behind the fork leg, rear on top of the chainstay
 _leg_dir = (ht_bot + hd * (t_axle * 0.5) + hn * (fork_offset * 0.3)) - front
@@ -1010,7 +1044,8 @@ def _front_port(fit):
     """Port on the back of the left fork leg, ~70mm above the caliper fitting."""
     along_leg = (fit - front).dot(_ld)
     return front + _ld * (along_leg + 70) + _leg_back * 12 + v(0, 50, 0), _leg_back
-flat_mount_caliper("front_caliper", front, 128, mount_to=front + _ld * 60 + v(0, 52, 0), port_fn=_front_port)
+flat_mount_caliper("front_caliper", front, 128, mount_to=front + _ld * 60 + v(0, 52, 0), port_fn=_front_port,
+                   rotor_y=FRONT_ROTOR_Y)
 # rear hose leaves the underside of the left chainstay ~150mm ahead of the axle
 _f = (rear.x + 150 + 210) / (rear.x + 8 + 210)
 _cs = v(rear.x + 150, 58 + 6 * _f, 42 + (BB_DROP - 42) * _f)
@@ -1256,7 +1291,7 @@ def stadium(c1, c2, r1, r2, n=14):
 # long black cage with a grey accent stripe; 12T X-Sync jockeys.
 AXS_SILVER = mat("AXS Silver Grey", (0.36, 0.36, 0.38), rough=0.32, metal=0.6)
 hanger = [(-8, 10), (12, 6), (8, -22), (-10, -38), (-22, -32), (-16, -4)]
-extrude_profile("rd_udh_hanger", [hanger], -74, 4, DARK, origin=rear)
+extrude_profile("rd_udh_hanger", [hanger], -UDH_OUTER_Y, 4, DARK, origin=rear)   # axle cap sits on its face
 for k, (hx, hz) in enumerate(((-4, -10), (-13, -27))):
     cyl(f"rd_hanger_bolt_{k}", rear + v(hx, -74.6, hz), 3, 1.4, METAL)
 knuckle = rear + v(-16, -70, -36)
