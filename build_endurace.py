@@ -793,8 +793,8 @@ def print_mat(name, fname, rough=0.55):
 TYRE_PRINT = print_mat("Schwalbe Sidewall Print", "tyre_print.png")
 TYRE_PRINT_H = 8
 TYRE_PRINT_W = TYRE_PRINT_H * 19.896                    # aspect from make_textures.py
-ENVE_H = 34                                   # sticker height across the 42mm rim
-ENVE_W = ENVE_H * 4.093                       # official logo aspect (make_textures.py)
+ENVE_H = 38                                   # owner photo bike_ref.jpg: ~38 mm across the 42 mm rim
+ENVE_W = 182                                  # ~182 mm along the rim (aftermarket stickers: logo stretched ~16%)
 ENVE_MAT = mask_mat("ENVE Sticker", "enve_logo.png", (0.88, 0.88, 0.86), rough=0.3, coat=1.0)
 DECAL_WHITE = mat("Decal White", (0.9, 0.9, 0.9), rough=0.4)
 TAG_WHITE = mat("Name Tag White", (0.95, 0.95, 0.95), rough=0.25)
