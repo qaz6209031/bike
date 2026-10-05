@@ -1455,6 +1455,7 @@ hole = cyl("stem_clamp_bolt_hole", hole_c, 4.2, 1.0, DARK, axis="X")
 cyl("stem_clamp_bolt_hex", hole_c - hn * 0.4, 2.0, 0.6, METAL, axis="X", verts=6)
 decal("stem_print_12nm", "12 Nm", FONT_COND, 6, 1.9, lambda x, y: hole_c - hn * 0.3 + v(0, -x, 0) + up_s * (y + 7.5),
       PRINT_LIGHT, cuts=1)
+HOOD_TURN_IN = math.radians(20)                 # lever rotation about the bar toward the stem (owner photos)
 for s, side in ((-1, "R"), (1, "L")):
     path = [bar_c + v(*q) for q in catmull([
         (0, s * TAPE_START, 0), (5, s * 176, -0.5), (22, s * 196, -3), (52, s * 205, -10),
@@ -1472,6 +1473,7 @@ for s, side in ((-1, "R"), (1, "L")):
     end_dir = (path[-1] - path[-2]).normalized()
     sweep(f"bar_end_plug_{side}", [path[-1] - end_dir * 1, path[-1] + end_dir * 3], [27, 27], [27, 27], DARK,
           up0=v(0, 0, 1))
+    _before_hood = set(bpy.data.objects.keys())
     # SRAM Rival eTap AXS hood (owner photos IMG_6956-6958): long rubber body on the forward bend,
     # rising to a tall rounded horn, chevron grip texture
     hood = loft(f"hood_{side}", [(0, 14, 13, 0), (20, 15, 15, 2), (45, 15, 17, 6), (62, 14, 20, 12),
@@ -1512,6 +1514,17 @@ for s, side in ((-1, "R"), (1, "L")):
     for k in range(5):                                             # grip ribs
         box(f"shift_paddle_rib_{side}{k}", pc + pn * 1.7 + pd.normalized() * (k * 5 - 4), (1.2, 15, 0.8), PADDLE_BLACK,
             rot=along(pd.normalized()), bevel=0.3)
+    # Hoods turned in (owner photos hoods_ref_1/2): the whole lever is rotated around the bar at its clamp,
+    # so the nose yaws ~18 deg toward the stem, the hood top rolls inward and the blade flares out at the bottom.
+    clamp_i = min(range(len(path)), key=lambda i: (path[i] - (bar_c + v(60, s * 206, -20))).length)
+    clamp_p = path[clamp_i]
+    clamp_t = (path[clamp_i + 1] - path[clamp_i - 1]).normalized()
+    turn_in = (Matrix.Translation(clamp_p * S) @ Matrix.Rotation(s * HOOD_TURN_IN, 4, clamp_t) @
+               Matrix.Translation(-clamp_p * S))
+    bpy.context.view_layer.update()
+    for name_ in set(bpy.data.objects.keys()) - _before_hood:
+        ob_ = bpy.data.objects[name_]
+        ob_.matrix_world = turn_in @ ob_.matrix_world
 
 # ---------------------------------------------------------------- Canyon GEAR GROOVE mount + Bryton Rider S510
 # Canyon GEAR GROOVE mount (IMG_6971 top view): the plate sits IN the stem's groove, flush with the stem /

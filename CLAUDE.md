@@ -128,6 +128,7 @@ unsubscribes/cancels pending notifications on unmount.
   Schwalbe Pro One Evo 32mm tyres, SRAM Paceline 160mm rotors, SRAM flat-mount calipers,
   internally routed hoses (fork leg / chainstay ports).
 - Cockpit: Canyon PACE T-bar (flat aero tops, taped), 80 mm stem (owner's specification), Bryton S510 on a GEAR GROOVE mount.
+  Hoods are turned in: each lever assembly is rotated `HOOD_TURN_IN` (20 deg) about the bar at its clamp (`hoods_ref_*.jpg`).
 - Seat: Fizik Aliante R5 on SP0093 VCLS Aero post; Canyon FLASH rear light. The post is matte black with no white
   print on the shaft (only a dark-grey SP093 on the non-drive side and white "5 Nm" on the head): a slim rear leaf
   sweeps back into the set-back clamp head, the front ~2/3 is a ribbed VCLS elastomer panel (`seattube_ref.jpg`).
