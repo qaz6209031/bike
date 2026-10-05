@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 A photo-accurate 3D model of the owner's Canyon Endurace CF SLX 7 AXS, built procedurally in Blender and
-shown in a Next.js / React Three Fiber web viewer ("Endurace Studio"). `README.md` covers viewer behaviour,
+shown in a Next.js / React Three Fiber web viewer ("Kai’s Bike", live at kaichin.dev/bike). `README.md` covers viewer behaviour,
 audio provenance and asset licences.
 
 ## Top rule: do NOT simplify anything

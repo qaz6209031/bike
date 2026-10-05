@@ -1,4 +1,4 @@
-# Endurace Studio
+# Kai’s Bike
 
 A browser-based viewer for the owner's Canyon Endurace CF SLX 7 AXS, built with Next.js App Router, React, React Three Fiber, drei, and Three.js.
 
