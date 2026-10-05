@@ -1,0 +1,20 @@
+{
+  "source": "sound.MOV",
+  "sourceSha256": "d57744bfa733d1937bef076de694a7da635e81289417eef80d93e8580bbefed8",
+  "kind": "owner-recording",
+  "sampleStartSeconds": 2.0,
+  "sampleDurationSeconds": 41.924,
+  "audioSeconds": 41.924,
+  "sampleRate": 48000,
+  "channels": 2,
+  "audioSha256": "343c644d3a8340082eab5b387ceae698b96fe4c453386a0ffa49235047d1031d",
+  "playbackRate": 1,
+  "playbackMode": "single-coast",
+  "processing": {
+    "equalization": false,
+    "normalization": false,
+    "channelMixing": false,
+    "resampling": false
+  },
+  "notes": "Unmodified native stereo coasting take, played once without looping. Its recorded cadence falls naturally; wheel speed also controls volume and the start position when enabling sound mid-coast."
+}

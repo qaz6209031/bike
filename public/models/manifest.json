@@ -1,0 +1,38 @@
+{
+  "file": "/models/endurace.glb",
+  "source": "endurace_cf_slx_7_axs_S.blend",
+  "frameSize": "S",
+  "meshObjects": 322,
+  "units": "metres",
+  "upAxis": "+Y",
+  "wheelAxle": "+Z",
+  "parts": [
+    "Frame",
+    "FrontWheel",
+    "RearWheel",
+    "FrontHub",
+    "RearHub",
+    "Crank",
+    "Pedals",
+    "PowerMeter",
+    "FrontDerailleur",
+    "RearDerailleur",
+    "RearLight",
+    "Cockpit",
+    "Stem",
+    "BikeComputer",
+    "ComputerMount",
+    "Saddle",
+    "BottleCages",
+    "Brakes",
+    "Drivetrain",
+    "NameSticker",
+    "FrontEnveDecals",
+    "RearEnveDecals"
+  ],
+  "notes": [
+    "FrontLight is not present on the owner's Blender model.",
+    "Cassette, chain, through axles and brake calipers remain stationary while wheels coast.",
+    "Blender procedural finishes are converted to web PBR maps; all original mesh detail and decals are preserved."
+  ]
+}

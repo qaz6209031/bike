@@ -1,0 +1,22 @@
+node_modules/
+.next/
+*.tsbuildinfo
+.DS_Store
+.env*.local
+artifacts/
+out/
+__pycache__/
+
+# Private / local-only material: never publish
+*_ref*.jpg
+render_*.png
+*.MOV
+*.mov
+# Blender working files (large; rebuild with build_endurace.py)
+*.blend
+*.blend1
+# Third-party source images (only their derived textures are committed)
+logo.avif
+enve_logo_official.png
+colnago_reference.png
+studio_small_09_2k.hdr

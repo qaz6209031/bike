@@ -1,0 +1,3 @@
+freehub.wav is derived from the owner's sound.MOV recording, supplied for this bike viewer.
+It is real recorded audio, not a synthetic demonstration. No CC0 licence is asserted.
+Processing and source hash are recorded in freehub.json. The source video is not distributed.
