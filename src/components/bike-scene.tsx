@@ -2,7 +2,7 @@
 
 import { memo, Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
-import { AdaptiveDpr, ContactShadows, Environment, OrbitControls, useGLTF } from "@react-three/drei";
+import { ContactShadows, Environment, OrbitControls, useGLTF } from "@react-three/drei";
 import { AdditiveBlending, DataTexture, LinearFilter, Mesh, MeshStandardMaterial, RGBAFormat, Vector3, type Object3D, type Color } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three/addons/controls/OrbitControls.js";
 import { asset } from "@/lib/base-path";
@@ -197,7 +197,10 @@ function CameraRig({ view, cameraCommand, dimensions, framing = 1.12 }: Pick<Sce
 }
 
 export default function BikeScene(props: SceneProps) {
-  return <Canvas shadows dpr={[1, 1.75]} performance={{ min: 0.55 }} camera={{ position: [4, 2, 8], fov: 37, near: 0.05, far: 100 }}
+  // Fixed DPR on purpose: AdaptiveDpr + OrbitControls "regress" dropped the resolution while dragging and
+  // restored it ~200 ms later. Each change resizes (and so clears) the WebGL canvas, and iOS Safari can
+  // composite that cleared canvas for a frame -> the bike flashed out while orbiting.
+  return <Canvas shadows dpr={[1, 1.75]} camera={{ position: [4, 2, 8], fov: 37, near: 0.05, far: 100 }}
     gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
     onPointerMissed={() => props.onSelect(null)}
     fallback={<div className="viewer-notice" role="alert"><strong>3D graphics aren’t available.</strong><p>Try a browser with WebGL enabled.</p></div>}>
@@ -209,8 +212,7 @@ export default function BikeScene(props: SceneProps) {
       <Environment files={asset(ENVIRONMENT_URL)} environmentIntensity={0.8} />
       <Model {...props} />
     </Suspense>
-    <OrbitControls makeDefault regress enableDamping dampingFactor={0.08} minDistance={1.5} maxDistance={24} maxPolarAngle={Math.PI * 0.53} rotateSpeed={0.7} zoomSpeed={0.9} />
+    <OrbitControls makeDefault enableDamping dampingFactor={0.08} minDistance={1.5} maxDistance={24} maxPolarAngle={Math.PI * 0.53} rotateSpeed={0.7} zoomSpeed={0.9} />
     <CameraRig view={props.view} cameraCommand={props.cameraCommand} dimensions={props.dimensions} framing={props.framing} />
-    <AdaptiveDpr pixelated />
   </Canvas>;
 }
