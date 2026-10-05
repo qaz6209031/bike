@@ -104,6 +104,10 @@ def web_materials():
         b = nt.nodes.new("ShaderNodeBsdfPrincipled")
         for name_, value in values.items():
             b.inputs[name_].default_value = value
+        # No KHR_materials_anisotropy on these metals: Blender's brushing uses a RADIAL tangent glTF can't
+        # express, and most of these meshes (chain, cassette, rotors, chainrings) have no UVs/tangents, so
+        # three.js derives an undefined brush direction -> highlights blow out white or go black by angle.
+        b.inputs["Anisotropic"].default_value = 0.0
         b.inputs["Roughness"].default_value = roughness_value
         if name in rubber:
             tc = nt.nodes.new("ShaderNodeTexCoord")
