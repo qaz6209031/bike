@@ -671,7 +671,17 @@ _dt_end = ht_bot - hd * 28 - hn * 6                       # ends inside the head
 _dt_u = (_dt_end - v(10, 0, 8)).normalized()
 _dt_len = (_dt_end - v(10, 0, 8)).length
 DT_KNOTS = [(0.0, 27), (1 - 80 / _dt_len, 25), (1.0, 23)]
-tube("down_tube", [v(10, 0, 8), _dt_end - _dt_u * 80], [27, 25], WHITE)
+# the down tube's BB end is a stub fused into the moulded BB junction (rear_triangle); the decal-carrying tube
+# starts inside that stub (decals are mapped from v(10, 0, 8) via DT_KNOTS, unaffected)
+DT_BB_STUB = 110.0
+_dt_r = lambda d: 27 - 2 * d / (_dt_len - 80)
+tube("down_tube", [v(10, 0, 8) + _dt_u * 40, _dt_end - _dt_u * 80], [_dt_r(40), 25], WHITE)
+# stub: flared where it grows out of the BB shell (moulded fillet), then tucks 0.7 mm under the tube so the
+# tube's own surface takes over with no ring
+_dt_stub_d = [0.0, 20.0, 45.0, 70.0, 85.0, DT_BB_STUB]
+_dt_stub_r = [_dt_r(d) + f for d, f in zip(_dt_stub_d, (7.0, 4.0, 1.2, 0.0, -0.35, -0.6))]
+tube("down_tube_bb_stub", [v(10, 0, 8) + _dt_u * d for d in _dt_stub_d], _dt_stub_r, WHITE)
+bpy.data.objects["down_tube_bb_stub"].data.bevel_resolution = 20      # fine section: no facets after fusing
 tube("down_tube_stub", [_dt_end - _dt_u * 100, _dt_end - _dt_u * 80, _dt_end], [24.5, 25, 23], WHITE)
 
 def fuse(name, names, voxel=1.0, smooth=24):
@@ -700,15 +710,22 @@ def st_profile(s_):
     return 22 - 7 * f, 24 - 6 * f + 5 * max(0.0, f - 0.75) / 0.25
 
 st_fwd = v(math.sin(sta), 0, math.cos(sta))
-seat_tube = loft("seat_tube", [(ST_LEN * k / 16, *st_profile(ST_LEN * k / 16), 0) for k in range(17)],
-                 WHITE, n=48, exp=(1, 1), subsurf=False)
+ST_BB_STUB = 95.0                                         # BB end fused into the moulded BB junction
+_st_s = [40.0] + [ST_LEN * k / 16 for k in range(17) if ST_LEN * k / 16 > 45]
+seat_tube = loft("seat_tube", [(s_, *st_profile(s_), 0) for s_ in _st_s], WHITE, n=48, exp=(1, 1), subsurf=False)
 seat_tube.rotation_euler = (0, sta + math.pi, 0)          # local X -> along the seat tube
+_stub = loft("seat_tube_bb_stub", [(s_, st_profile(s_)[0] + f, st_profile(s_)[1] + f, 0)      # flared base, tucked end
+                                   for s_, f in ((0.0, 6.0), (20.0, 3.5), (40.0, 1.0), (60.0, 0.0), (75.0, -0.35),
+                                                 (ST_BB_STUB, -0.6))], WHITE, n=128, exp=(1, 1), subsurf=False)
+_stub.rotation_euler = (0, sta + math.pi, 0)
 cut_to_plane(seat_tube, ST_LEN, P_TOP, FRAME_N)            # top cut parallel to the frame line
 cyl("bb_shell", v(0, 0, 0), 24, 86, WHITE)
 for s, side in ((-1, "R"), (1, "L")):
+    # starts INSIDE the BB shell (no stub hanging past its faces), stays inboard of the chainrings
+    # (35T inner face y=39, 48T y=45) and clear of the 32 mm tyre until past their radius, then flares out
     tube(f"chainstay_{side}",
-         [v(-30, s * 36, 6), v(-210, s * 58, 42), rear + v(8, s * 64, 0)],
-         [13, 11, 8], WHITE, smooth=True)
+         [v(-12, s * 25, 4), v(-70, s * 26, 16), v(-105, s * 32, 25), v(-210, s * 58, 42), rear + v(8, s * 64, 0)],
+         [12, 10.5, 9.5, 10, 8], WHITE, smooth=True)                     # slim where it threads tyre | rings
     ss_start = st_dir * (ST_LEN * 0.70) + v(0, s * 14, 0)
     tube(f"seatstay_{side}",
          [ss_start, (ss_start + rear) / 2 + v(0, s * 52, 0), rear + v(6, s * 64, 10)],
@@ -738,7 +755,9 @@ for s, side in ((-1, "R"), (1, "L")):
         return lower[:-1] + upper[:-1]
     extrude_profile(f"dropout_{side}", [hull(pts)], 60 if s > 0 else -70, 10, WHITE, origin=rear)
 # BB shell + chainstays + seatstays + dropouts as one moulded rear end (filleted junctions, no flat stubs)
-fuse("rear_triangle", ["bb_shell", "chainstay_R", "chainstay_L", "seatstay_R", "seatstay_L", "dropout_R", "dropout_L"])
+# ... plus the down tube and seat tube BB ends, so every tube flows into the BB shell with a moulded fillet
+fuse("rear_triangle", ["bb_shell", "down_tube_bb_stub", "seat_tube_bb_stub", "chainstay_R", "chainstay_L",
+                       "seatstay_R", "seatstay_L", "dropout_R", "dropout_L"])
 
 # Frame decals: CANYON on down tube, ENDURACE SLX on top tube (both sides)
 dt_a, dt_b = v(10, 0, 8), _dt_end
@@ -1146,6 +1165,14 @@ for s, ang in ((-1, crank_ang), (1, crank_ang + math.pi)):
     arm.rotation_euler = along(u)
     pedal(f"pedal_{tag}", u * crank_len + v(0, s * 68, 0), s)
 cyl("crank_spindle_cap", v(0, -72, 0), 14, 3, DARK)
+# what joins the arms to the frame: SRAM DUB spindle (28.99 mm) through PF86.5 press-fit cups, NDS wave washer
+cyl("crank_spindle", v(0, 0, 0), 14.5, 2 * 63, DARK)
+for s, tag in ((-1, "R"), (1, "L")):
+    cyl(f"bb_cup_{tag}", v(0, s * 44.5, 0), 21.5, 3.0, RESIN)                     # cup lip on the shell face
+    cyl(f"bb_cup_seal_{tag}", v(0, s * 46.4, 0), 17.0, 0.8, RESIN)
+cyl("crank_wave_washer", v(0, 51.5, 0), 16.5, 1.0, METAL)
+cyl("crank_arm_bolt_L", v(0, 72.4, 0), 10.5, 1.4, DARK)                         # NDS self-extracting crank bolt
+cyl("crank_arm_bolt_hex_L", v(0, 73.2, 0), 4.0, 0.3, RESIN, verts=6)
 place("quarq_ring", disc_bmesh(9, 32), lambda x, y: v(x, -73.6, y), PRINT_GREY)
 decal("quarq_q", "Q", FONT_BOLD, 9, 10, lambda x, y: v(x, -73.9, y), DARK, cuts=2)
 
