@@ -210,7 +210,7 @@ export default function ViewerShell() {
 
     <main className="studio-main">
       <section className="viewer-stage" aria-label="Interactive 3D bicycle viewer">
-        <div className="model-heading"><p className="eyebrow">CANYON / PERSONAL BUILD</p><h1>Endurace<span className="title-dot">.</span></h1><p className="model-subtitle">CF SLX 7 AXS · Size {BIKE_SIZE}</p><span className="paint-chip"><i />Crystal White</span></div>
+        <div className="model-heading"><h1>Canyon Endurace CF SLX 7 AXS · Size {BIKE_SIZE}</h1><span className="paint-chip"><i />Crystal White</span></div>
         <div className="canvas-container" data-testid="viewer-canvas">
           <ViewerBoundary key={retry} onRetry={reloadModel} onFailure={onFailure}>
             <BikeScene theme={theme} view={view} selected={selectedPart?.name ?? null} drive={drive} audio={audio} cameraCommand={cameraCommand} onSelect={select} onReady={onReady} onStats={onStats} dimensions={modelInfo.dimensions} navigationRef={navigationRef} />
@@ -232,7 +232,7 @@ export default function ViewerShell() {
       <nav className="mobile-section-nav" aria-label="Viewer sections"><a href="#wheel-controls">Wheel controls <Icon name="chevron" size={16} /></a></nav>
 
       <aside className="controls-panel" aria-label="Model and wheel controls">
-        <div className="panel-intro"><p className="eyebrow">YOUR PERSONAL BUILD</p><h2>Your upgrades.<br />Your ride.</h2><p>The additions that make it yours.</p></div>
+        <div className="panel-intro"><h2>My upgrades</h2></div>
         <section id="bike-upgrades" className="components-section"><div className="section-heading"><h3><span>01</span> Upgrades</h3><span className="count-pill" aria-label={`${available.length} available upgrades`}>{String(available.length).padStart(2, "0")}</span></div>
           <div className="parts-list" aria-label="Select an upgrade">
             {available.map((part) => <button className={`part-button ${selected === part.name ? "selected" : ""}`} key={part.name} onClick={() => select(selected === part.name ? null : part.name)} aria-pressed={selected === part.name}><span className="part-marker" /><span className="part-text"><strong>{part.label}</strong><small>{part.detail}</small></span><Icon name="chevron" size={14} /></button>)}

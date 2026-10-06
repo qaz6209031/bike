@@ -1826,7 +1826,8 @@ def top_fillet(a_top, rt):
     return [(lambda f, t=t: a_top(f) - rt + rt * math.sin(t), lambda f, t=t: rt * (1 - math.cos(t)))
             for t in (0.0, math.pi / 8, math.pi / 4, 3 * math.pi / 8, math.pi / 2)]
 
-a_hidden = ST_LEN - 10                                         # post bottom, hidden by the collar
+a_hidden = ST_LEN + 3          # post bottom inside the collar: any lower and the boxy post section pokes
+                                # through the oval seat tube just under the collar
 PANEL_F_LO = POST_SPLIT_F + POST_GROOVE
 def panel_top(f, R=18.0):
     """Elastomer top in side view: flat under the head at the front, an R18 corner down into the split groove."""
@@ -1873,11 +1874,41 @@ collar = loft("seat_collar", [(ST_LEN - 1, POST_HW + 2.5, POST_HH + 2.5, 0), (ST
 collar.rotation_euler = (0, sta + math.pi, 0)
 cut_to_plane(collar, ST_LEN - 1, P_TOP, FRAME_N, offset=-0.5, x_max=ST_LEN - 1)   # sits on the frame line ...
 cut_to_plane(collar, ST_LEN + 7, P_TOP, FRAME_N, offset=8)                        # ... top parallel, 8mm up
-# seat clamp cover: tab on the top tube just ahead of the collar, with its bolt and "5 Nm"
-clamp_c = P_TOP + tt_u * (POST_HH + 17) + FRAME_N * 1.6
-box("seat_clamp_cover", clamp_c, (30, 18, 3), RESIN, rot=along(tt_u), bevel=1.2)
-place("seat_clamp_bolt", disc_bmesh(4, 20), lambda x, y: clamp_c + tt_u * (x + 6) + v(0, y, 0) + FRAME_N * 1.6, DARK)
-decal("seat_clamp_5nm", "5 Nm", FONT_BOLD, 6, 1.9, lambda x, y: clamp_c + tt_u * (y - 4) - v(0, x, 0) + FRAME_N * 1.62,
+# seat clamp cover (owner photo clampcover_ref.jpg): a black plate set FLUSH into the top tube, running out of the
+# collar to a rounded front end; flush Torx bolt near the front, white "5 Nm" between the bolt and the post.
+bpy.context.view_layer.update()
+def frame_top(d, y):
+    """Top-tube / seat-cluster surface (mm) at d mm along the frame line from the seat axis, lateral y."""
+    dg = bpy.context.evaluated_depsgraph_get()
+    o = (P_TOP + tt_u * d + v(0, y, 0) + FRAME_N * 30) * S
+    hit, loc, _n, _i, ob, _m = scene.ray_cast(dg, o, -FRAME_N)
+    while hit and ob.name not in ("top_tube", "seat_tube"):
+        hit, loc, _n, _i, ob, _m = scene.ray_cast(dg, loc - FRAME_N * 1e-5, -FRAME_N)
+    if not hit:
+        raise RuntimeError(f"frame_top: no frame surface at d={d:.1f}, y={y:.1f}")
+    return loc / S
+CC_REAR, CC_FRONT, CC_HW = POST_HH + 1.0, POST_HH + 31.0, 10.0      # tucked under the collar -> 30 mm out
+def cc_outline(inset=0.0, n_arc=18, n_side=24):
+    hw, front = CC_HW - inset, CC_FRONT - inset
+    arc_c = front - hw
+    pts = [(CC_REAR + (arc_c - CC_REAR) * k / n_side, -hw) for k in range(n_side + 1)]
+    pts += [(arc_c + hw * math.cos(-math.pi / 2 + math.pi * k / n_arc), hw * math.sin(-math.pi / 2 + math.pi * k / n_arc))
+            for k in range(1, n_arc)]
+    pts += [(arc_c - (arc_c - CC_REAR) * k / n_side, hw) for k in range(n_side + 1)]
+    return pts
+CLAMP_COVER = mat("Seat Clamp Cover", (0.018, 0.018, 0.02), rough=0.5)
+on_frame = lambda lift: (lambda x, y: frame_top(x, y) + FRAME_N * lift)
+place("seat_clamp_cover", shapes_bmesh([cc_outline(0.3)], cuts=8), on_frame(0.25), CLAMP_COVER)
+ribbon("seat_clamp_seam", [frame_top(x, y) + FRAME_N * 0.1 for x, y in cc_outline(-0.15)][:-1], 0.6, 0.2, DARK,
+       lambda p_, t_: FRAME_N)
+cc_bolt = CC_FRONT - 9.0
+place("seat_clamp_bolt_bore", disc_bmesh(4.4, 32), lambda x, y: frame_top(cc_bolt + x, y) + FRAME_N * 0.3, RESIN)
+place("seat_clamp_bolt", disc_bmesh(3.7, 32), lambda x, y: frame_top(cc_bolt + x, y) + FRAME_N * 0.38, DARK)
+torx = [(1.55 * math.cos(2 * math.pi * k / 24) * (1 if k % 4 < 2 else 0.68),
+         1.55 * math.sin(2 * math.pi * k / 24) * (1 if k % 4 < 2 else 0.68)) for k in range(24)]   # 6-lobe socket
+place("seat_clamp_bolt_torx", shapes_bmesh([torx], cuts=1), lambda x, y: frame_top(cc_bolt + x, y) + FRAME_N * 0.44,
+      RESIN)
+decal("seat_clamp_5nm", "5 Nm", FONT_BOLD, 7, 2.1, lambda x, y: frame_top(cc_bolt - 8.5 + y, -x) + FRAME_N * 0.32,
       DECAL_WHITE, cuts=1)
 post_tilt = (0, -(math.pi / 2 - sta), 0)
 for side, tag in ((-1, "R"), (1, "L")):
