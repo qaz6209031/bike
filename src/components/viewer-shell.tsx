@@ -210,7 +210,7 @@ export default function ViewerShell() {
 
     <main className="studio-main">
       <section className="viewer-stage" aria-label="Interactive 3D bicycle viewer">
-        <div className="model-heading"><h1>Canyon Endurace CF SLX 7 AXS · Size {BIKE_SIZE}</h1><span className="paint-chip"><i />Crystal White</span></div>
+        <div className="model-heading"><h1>Canyon Endurace<span className="model-title-sub">CF SLX 7 AXS · Size {BIKE_SIZE}</span></h1><span className="paint-chip"><i />Crystal White</span></div>
         <div className="canvas-container" data-testid="viewer-canvas">
           <ViewerBoundary key={retry} onRetry={reloadModel} onFailure={onFailure}>
             <BikeScene theme={theme} view={view} selected={selectedPart?.name ?? null} drive={drive} audio={audio} cameraCommand={cameraCommand} onSelect={select} onReady={onReady} onStats={onStats} dimensions={modelInfo.dimensions} navigationRef={navigationRef} />
