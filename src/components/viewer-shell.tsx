@@ -217,7 +217,6 @@ export default function ViewerShell() {
             {loadState === "loading" ? <ModelLoading /> : null}
           </ViewerBoundary>
         </div>
-        {selectedPart ? <div className="selected-label"><span className="status-dot orange" /><span><strong>{selectedPart.label}</strong><small>{selectedPart.detail}</small></span><button className="clear-selection" onClick={() => select(null)} aria-label="Clear selected upgrade">×</button></div> : null}
         <div className="camera-presets" role="group" aria-label="Camera angle">
           {(["perspective", "side", "front"] as const).map((preset) => <button key={preset} className={view === preset ? "active" : ""} aria-pressed={view === preset} onClick={() => setView(preset)}>{preset === "perspective" ? "3/4 view" : `${preset[0].toUpperCase()}${preset.slice(1)}`}</button>)}
         </div>
