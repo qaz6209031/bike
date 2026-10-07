@@ -14,8 +14,6 @@ const paths = {
   chevron: <path d="m9 5 7 7-7 7" />,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6m0-10v.1" /></>,
   brake: <><path d="M8 5v14M16 5v14" /><circle cx="12" cy="12" r="9" /></>,
-  sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" /></>,
-  moon: <path d="M20.8 13.2A9 9 0 0 1 10.8 3.2 9 9 0 1 0 20.8 13.2Z" />,
   hand: <><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11m0-6.5V3.5a1.5 1.5 0 0 1 3 0V11m0-6a1.5 1.5 0 0 1 3 0v6m0-3.5a1.5 1.5 0 0 1 3 0V15a7 7 0 0 1-7 7h-1.2a6 6 0 0 1-4.6-2.1l-3.5-4.2a1.6 1.6 0 0 1 2.4-2.1L8 15.5" /></>,
   rotate: <><rect x="3" y="7" width="18" height="11" rx="2" transform="rotate(-90 12 12.5)" /><path d="M17 3.5a8 8 0 0 1 3.5 5.5m0 0 1.5-2.5M20.5 9l-2.7-.6" /></>,
 } as const;

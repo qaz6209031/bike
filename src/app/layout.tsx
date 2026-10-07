@@ -6,8 +6,8 @@ export const metadata: Metadata = {
   title: "Kai’s Bike — Canyon Endurace CF SLX in 3D",
   description: "Kai’s Canyon Endurace CF SLX in interactive 3D. Explore every component, spin the wheels, and hear the freehub coast.",
 };
-export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: [{ media: "(prefers-color-scheme: light)", color: "#f8f8f5" }, { media: "(prefers-color-scheme: dark)", color: "#171a1b" }] };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#171a1b", colorScheme: "dark" };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} /></head><body>{children}</body></html>;
+  return <html lang="en" data-theme="dark" style={{ colorScheme: "dark" }} suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} /></head><body>{children}</body></html>;
 }

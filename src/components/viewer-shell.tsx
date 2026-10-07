@@ -7,7 +7,7 @@ import { FreehubAudio } from "@/lib/freehub-audio";
 import { WheelDrive, rpmToRadians, type WheelTarget } from "@/lib/wheel-physics";
 import { asset } from "@/lib/base-path";
 import { BIKE_SIZE, COMPONENT_SOURCE, ENVIRONMENT_URL, MODEL_URL, UPGRADE_PARTS, type CameraView, type PartName } from "@/lib/parts";
-import { setTheme, useTheme } from "@/lib/theme";
+import { useTheme } from "@/lib/theme";
 import type { CameraCommand, CameraNavigation, ModelInfo } from "./bike-scene";
 import Icon from "./icons";
 import ModelLoading from "./model-loading";
@@ -205,7 +205,7 @@ export default function ViewerShell() {
     <header className="site-header">
       <Link href="/" className="wordmark" aria-label="Kai’s Bike home"><span className="brand-symbol"><i /><i /><i /></span><span>KAI’S<span className="wordmark-sub">BIKE</span></span></Link>
       <div className="header-caption"><span className="status-dot" /> A closer look at your ride</div>
-      <div className="header-actions"><button className="theme-toggle" aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} aria-pressed={theme === "dark"} onClick={() => setTheme(theme === "dark" ? "light" : "dark")}><Icon name={theme === "dark" ? "sun" : "moon"} /><span>{theme === "dark" ? "Light mode" : "Dark mode"}</span></button></div>
+      <div className="header-actions" aria-hidden="true" />
     </header>
 
     <main className="studio-main">

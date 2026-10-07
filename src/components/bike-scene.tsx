@@ -3,7 +3,7 @@
 import { memo, Suspense, useEffect, useMemo, useRef, type RefObject } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { ContactShadows, Environment, OrbitControls, useGLTF } from "@react-three/drei";
-import { AdditiveBlending, DataTexture, LinearFilter, MOUSE, Mesh, MeshStandardMaterial, PerspectiveCamera, RGBAFormat, Vector3, type Object3D, type Color } from "three";
+import { AdditiveBlending, Color, DataTexture, LinearFilter, MOUSE, Mesh, MeshStandardMaterial, PerspectiveCamera, RGBAFormat, Vector3, type Object3D } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three/addons/controls/OrbitControls.js";
 import { asset } from "@/lib/base-path";
 import { ENVIRONMENT_URL, MODEL_URL, PARTS, UPGRADE_PARTS, partObjectNames, type CameraView, type PartName } from "@/lib/parts";
@@ -33,10 +33,14 @@ export type SceneProps = {
   navigationRef?: RefObject<CameraNavigation | null>;
 };
 
-function highlightPart(object: Object3D, materials: Map<MeshStandardMaterial, { emissive: Color; intensity: number }>, selected: PartName | null, theme: Theme) {
+type OriginalLook = { emissive: Color; intensity: number; color: Color };
+const HIGHLIGHT = new Color("#eb653f");
+
+function highlightPart(object: Object3D, materials: Map<MeshStandardMaterial, OriginalLook>, selected: PartName | null, theme: Theme) {
   for (const [mat, original] of materials) {
     mat.emissive.copy(original.emissive);
     mat.emissiveIntensity = original.intensity;
+    mat.color.copy(original.color);
   }
   const part = PARTS.find((part) => part.name === selected);
   for (const name of part ? partObjectNames(part) : []) {
@@ -46,8 +50,11 @@ function highlightPart(object: Object3D, materials: Map<MeshStandardMaterial, { 
       if (theme === "dark" && (child.name === "flash_lens" || child.name === "flash_led_bar")) return;
       for (const mat of Array.isArray(child.material) ? child.material : [child.material]) {
         if (mat instanceof MeshStandardMaterial) {
-          mat.emissive.set("#eb653f");
+          mat.emissive.copy(HIGHLIGHT);
           mat.emissiveIntensity = 0.18;
+          // A faint glow disappears on white parts (ENVE decals, name sticker): tint them toward the accent too.
+          const original = materials.get(mat);
+          if (original && original.color.r + original.color.g + original.color.b > 1.5) mat.color.copy(original.color).lerp(HIGHLIGHT, 0.75);
         }
       }
     });
@@ -82,7 +89,7 @@ const Model = memo(function Model({ url = asset(MODEL_URL), theme, selected, dri
   const { scene: cached } = useGLTF(url);
   const model = useMemo(() => {
     const object = cached.clone(true);
-    const materials = new Map<MeshStandardMaterial, { emissive: Color; intensity: number }>();
+    const materials = new Map<MeshStandardMaterial, OriginalLook>();
     let meshes = 0;
     let frameSize: string | null = null;
     object.traverse((child) => {
@@ -94,7 +101,7 @@ const Model = memo(function Model({ url = asset(MODEL_URL), theme, selected, dri
       child.receiveShadow = true;
       const cloneMaterial = (material: MeshStandardMaterial) => {
         const copy = material.clone();
-        if (copy instanceof MeshStandardMaterial) materials.set(copy, { emissive: copy.emissive.clone(), intensity: copy.emissiveIntensity });
+        if (copy instanceof MeshStandardMaterial) materials.set(copy, { emissive: copy.emissive.clone(), intensity: copy.emissiveIntensity, color: copy.color.clone() });
         return copy;
       };
       child.material = Array.isArray(child.material) ? child.material.map(cloneMaterial) : cloneMaterial(child.material);
