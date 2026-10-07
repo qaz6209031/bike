@@ -1018,6 +1018,7 @@ def thru_axle(name, c, axle_print, drive_cap, drive_face_min=0.0):
     return yl, yr
 
 VALVE_BLACK = mat("Valve Black Alloy", (0.02, 0.02, 0.022), rough=0.3, metal=0.8)
+VALVE_CAP = mat("Valve Cap Plastic", (0.015, 0.015, 0.016), rough=0.55)
 
 def radial_prism(name, c0, c1, section, m):
     """Closed prism from c0 to c1 (mm); section = list of (radius) at evenly spaced angles around the axis."""
@@ -1059,6 +1060,10 @@ def presta_valve(name, c, ang):
     tube(f"{name}_valve_core", [at(r_bed - 24), at(r_bed - 31)], 1.2, METAL)
     radial_prism(f"{name}_valve_tip", at(r_bed - 27.5), at(r_bed - 29.5), [2.0 if k % 2 else 1.8 for k in range(24)],
                  METAL)
+    # black plastic cap screwed over the end of the stem, covering the core: ribbed grip, chamfered end
+    radial_prism(f"{name}_valve_cap", at(r_bed - 21.5), at(r_bed - 32.5), [3.8 if k % 2 else 3.55 for k in range(32)],
+                 VALVE_CAP)
+    radial_prism(f"{name}_valve_cap_end", at(r_bed - 32.5), at(r_bed - 33.4), [3.2] * 32, VALVE_CAP)
 
 def wheel(name, c, y_drive_flange=-34, rotor_y=ROTOR_Y, y_flange_l=36, axle_print="M12 X 1.5", drive_cap=True):
     torus(f"{name}_tire", c, R_BEAD + TIRE_W / 2, TIRE_W / 2, TIRE)
