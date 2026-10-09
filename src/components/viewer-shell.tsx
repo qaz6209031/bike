@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { Component, useCallback, useEffect, useRef, useState, type ErrorInfo, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { FreehubAudio } from "@/lib/freehub-audio";
 import { WheelDrive, rpmToRadians, type WheelTarget } from "@/lib/wheel-physics";
@@ -141,11 +140,6 @@ export default function ViewerShell() {
     navigationRef.current?.pan(move[0], move[1]);
   }
 
-  async function toggleSound() {
-    if (sound === "on") { audio.disable(); setSound("off"); return; }
-    await enableSound();
-  }
-
   async function enableSound() {
     setSound("loading");
     setAudioError("");
@@ -167,6 +161,11 @@ export default function ViewerShell() {
     if (sound !== "on" && sound !== "loading") void enableSound();   // audio.enable() runs synchronously here
     drive.setVelocity("RearWheel", rpmToRadians(PHONE_SPIN_RPM));
     if (!triedFullscreen.current) { triedFullscreen.current = true; enterLandscapeFullscreen(); }
+  }
+
+  function spinWheel() {
+    if (sound !== "on" && sound !== "loading") void enableSound();
+    drive.setVelocity(target, rpmToRadians(rpm));
   }
 
   async function reloadModel() {
@@ -202,12 +201,6 @@ export default function ViewerShell() {
   }
 
   return <div className="studio-shell">
-    <header className="site-header">
-      <Link href="/" className="wordmark" aria-label="Kai’s Bike home"><span className="brand-symbol"><i /><i /><i /></span><span>KAI’S<span className="wordmark-sub">BIKE</span></span></Link>
-      <div className="header-caption"><span className="status-dot" /> A closer look at your ride</div>
-      <div className="header-actions" aria-hidden="true" />
-    </header>
-
     <main className="studio-main">
       <section className="viewer-stage" aria-label="Interactive 3D bicycle viewer">
         <div className="model-heading"><h1>Canyon Endurace<span className="model-title-sub">CF SLX 7 AXS · Size {BIKE_SIZE}</span></h1><span className="paint-chip"><i />Crystal White</span></div>
@@ -246,13 +239,11 @@ export default function ViewerShell() {
           <div className="speed-readout"><strong data-testid="wheel-rpm">{Math.round(speed)}</strong><span>RPM<small>LIVE SPEED</small></span><div className={`wheel-indicator ${moving ? "spinning" : ""}`}><Icon name="wheel" size={41} /></div></div>
           <label className="range-label" htmlFor="launch-speed"><span>Spin speed</span><strong>{rpm} <small>rpm</small></strong></label><input id="launch-speed" type="range" min="30" max="360" step="10" value={rpm} onChange={(event) => setRpm(Number(event.target.value))} aria-valuetext={`${rpm} revolutions per minute`} />
           <p className="spin-note">Coasts to a stop. Press Brake to stop sooner.</p>
-          <div className="wheel-actions"><button className="button button-primary" disabled={!ready || !(target === "both" ? ["FrontWheel", "RearWheel"].every((name) => modelInfo.parts.includes(name)) : modelInfo.parts.includes(target))} onClick={() => drive.setVelocity(target, rpmToRadians(rpm))}>Spin wheel<Icon name="arrow" /></button><button className="button button-secondary" disabled={!ready} onClick={() => { drive.stop(); audio.pause(); }}><Icon name="brake" size={16} />Brake</button></div>
-          <div className="sound-row"><span><strong>Hear the freehub</strong><small>{stats.sound && sound === "on" ? "Coasting with sound" : "Sound follows rear-wheel speed"}</small></span><button className={`sound-toggle ${sound === "on" ? "enabled" : ""}`} aria-label={sound === "on" ? "Disable freehub sound" : "Enable freehub sound"} aria-pressed={sound === "on"} disabled={sound === "loading"} onClick={toggleSound}><Icon name={sound === "on" ? "sound" : "mute"} size={17} />{sound === "loading" ? "…" : sound === "on" ? "On" : "Off"}</button></div>
-          {audioError ? <p className="audio-error" role="alert">{audioError}</p> : null}
+          <div className="wheel-actions"><button className="button button-primary" disabled={!ready || !(target === "both" ? ["FrontWheel", "RearWheel"].every((name) => modelInfo.parts.includes(name)) : modelInfo.parts.includes(target))} onClick={spinWheel}>Spin wheel<Icon name="arrow" /></button><button className="button button-secondary" disabled={!ready} onClick={() => { drive.stop(); audio.pause(); }}><Icon name="brake" size={16} />Brake</button></div>
+          {audioError ? <p className="audio-error" role="alert">{audioError} Press Spin wheel to retry.</p> : null}
         </section>
         <div className="panel-footnote"><span className="finish-swatch" /><span>White gloss. Carbon weave.<br />Made for a closer look.</span></div>
       </aside>
     </main>
-    <footer className="site-footer"><span><span className="status-dot" />{loadState === "error" ? "Model unavailable" : ready ? "3D model ready" : "Preparing 3D model"}</span><span className="footer-center">CANYON ENDURACE / KAI’S BUILD</span><span>ORBIT. EXPLORE. RIDE.</span></footer>
   </div>;
 }
