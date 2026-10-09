@@ -3,12 +3,11 @@
 Blender --background endurace_cf_slx_7_axs_S.blend --python-exit-code 1 --python export_viewer.py
 Export happens in memory; it never writes over the source .blend.
 """
-import hashlib
 import json
 import math
 import os
-import re
 import shutil
+import subprocess
 import wave
 
 import bpy
@@ -305,24 +304,6 @@ def move(ob, parent):
     ob.matrix_world = world
 
 
-def refresh_model_url(dest):
-    """Refresh the viewer's cache key after exporting, including during local development."""
-    with open(dest, "rb") as handle:
-        version = hashlib.sha256(handle.read()).hexdigest()[:12]
-    path = os.path.join(OUT, "src", "lib", "parts.ts")
-    with open(path, encoding="utf-8") as handle:
-        source = handle.read()
-    url = f"/models/endurace.glb?v={version}"
-    updated, count = re.subn(r'(export const MODEL_URL = ")[^"]*(";)',
-                             lambda match: match[1] + url + match[2], source)
-    if count != 1:
-        raise ValueError("Expected exactly one MODEL_URL declaration in src/lib/parts.ts")
-    if updated != source:
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(updated)
-    print(f"[viewer] Model URL: {url}")
-
-
 def split_tbar(scene, root):
     """The one-piece T-bar is a single fused surface. Cut it at the bar's rear edge so the viewer can
     highlight the stem alone; each piece keeps the original corner normals, so the cut leaves no seam."""
@@ -480,7 +461,9 @@ def main():
     os.makedirs(env_dir, exist_ok=True)
     shutil.copyfile(os.path.join(OUT, "studio_small_09_2k.hdr"), os.path.join(env_dir, "studio.hdr"))
     make_audio()
-    refresh_model_url(dest)
+    # Lossless web compression verifies every decoded buffer before writing and refreshes MODEL_URL.
+    subprocess.run(["node", "--experimental-strip-types", os.path.join(OUT, "scripts", "compress-model.ts")],
+                   cwd=OUT, check=True)
     print(f"[viewer] Exported {len(originals)} mesh objects; {os.path.getsize(dest) / 1e6:.1f} MB -> {dest}")
 
 

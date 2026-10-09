@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { FREEHUB_AUDIO_URL } from "../src/lib/freehub-recording.ts";
+import { MODEL_URL } from "../src/lib/parts.ts";
+import { decodeBufferViews, readGlb } from "../scripts/compress-model.ts";
 import { Box3, Matrix4, Quaternion, Vector3 } from "three";
 
 type Node = { name: string; mesh?: number; children?: number[]; translation?: number[]; rotation?: number[]; scale?: number[]; matrix?: number[]; extras?: { frameSize?: string; pivotAtAxle?: boolean; wheelAxis?: number[] } };
@@ -18,9 +20,9 @@ type GLTF = {
 };
 
 const file = readFileSync(new URL("../public/models/endurace.glb", import.meta.url));
-const jsonLength = file.readUInt32LE(12);
-const gltf: GLTF = JSON.parse(file.subarray(20, 20 + jsonLength).toString());
-const binaryStart = 20 + jsonLength + 8;
+const parsed = readGlb(file);
+const gltf = parsed.document as unknown as GLTF;
+const bufferViews = await decodeBufferViews(parsed);
 const index = (name: string) => gltf.nodes.findIndex((node) => node.name === name);
 const node = (name: string) => {
   const i = index(name);
@@ -60,11 +62,12 @@ function tireBounds(wheel: string, angle: number) {
     const accessor = gltf.accessors[primitive.attributes.POSITION];
     assert.equal(accessor.componentType, 5126, "positions are float32");
     const view = gltf.bufferViews[accessor.bufferView];
-    const offset = binaryStart + (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+    const bytes = bufferViews[accessor.bufferView];
+    const offset = accessor.byteOffset ?? 0;
     const stride = view.byteStride ?? 12;
     for (let i = 0; i < accessor.count; i++) {
       const p = offset + i * stride;
-      bounds.expandByPoint(new Vector3(file.readFloatLE(p), file.readFloatLE(p + 4), file.readFloatLE(p + 8)).applyMatrix4(transform));
+      bounds.expandByPoint(new Vector3(bytes.readFloatLE(p), bytes.readFloatLE(p + 4), bytes.readFloatLE(p + 8)).applyMatrix4(transform));
     }
   }
   return bounds;
@@ -85,6 +88,12 @@ test("the exported bike is complete, self-contained, and has named component gro
   assert.ok(gltf.images.every((image) => !image.uri && image.bufferView !== undefined));
   assert.ok(gltf.extensionsUsed.includes("KHR_materials_clearcoat"));
   assert.ok(gltf.extensionsUsed.includes("KHR_materials_anisotropy"));
+});
+
+test("the web model requires Meshopt and its URL matches the compressed content hash", () => {
+  assert.ok(parsed.document.extensionsRequired?.includes("EXT_meshopt_compression"));
+  assert.ok(parsed.document.bufferViews.some((view) => view.extensions?.EXT_meshopt_compression));
+  assert.equal(MODEL_URL, `/models/endurace.glb?v=${createHash("sha256").update(file).digest("hex").slice(0, 12)}`);
 });
 
 for (const wheel of ["FrontWheel", "RearWheel"]) {
