@@ -5,6 +5,7 @@ import { Component, useCallback, useEffect, useRef, useState, type ErrorInfo, ty
 import { FreehubAudio } from "@/lib/freehub-audio";
 import { WheelDrive, rpmToRadians, type WheelTarget } from "@/lib/wheel-physics";
 import { asset } from "@/lib/base-path";
+import { trackBikeEvent } from "@/lib/analytics";
 import { BIKE_SIZE, COMPONENT_SOURCE, ENVIRONMENT_URL, MODEL_URL, UPGRADE_PARTS, type CameraView, type PartName } from "@/lib/parts";
 import { useTheme } from "@/lib/theme";
 import type { CameraCommand, CameraNavigation, ModelInfo } from "./bike-scene";
@@ -106,7 +107,10 @@ export default function ViewerShell() {
     setLoadState("error");
   }, [audio, drive]);
   const onStats = useCallback((next: typeof stats) => setStats(next), []);
-  const select = useCallback((part: PartName | null) => setSelected(part), []);
+  const select = useCallback((part: PartName | null) => {
+    setSelected(part);
+    if (part) trackBikeEvent({ name: "upgrade_select", part });
+  }, []);
   const ready = loadState === "ready" && modelInfo.meshes > 0;
   const selectedPart = UPGRADE_PARTS.find((part) => part.name === selected);
   const available = UPGRADE_PARTS.filter((part) => modelInfo.parts.includes(part.name));
@@ -160,12 +164,14 @@ export default function ViewerShell() {
   function spinRearWheel() {
     if (sound !== "on" && sound !== "loading") void enableSound();   // audio.enable() runs synchronously here
     drive.setVelocity("RearWheel", rpmToRadians(PHONE_SPIN_RPM));
+    trackBikeEvent({ name: "wheel_spin", wheel: "RearWheel", rpm: PHONE_SPIN_RPM });
     if (!triedFullscreen.current) { triedFullscreen.current = true; enterLandscapeFullscreen(); }
   }
 
   function spinWheel() {
     if (sound !== "on" && sound !== "loading") void enableSound();
     drive.setVelocity(target, rpmToRadians(rpm));
+    trackBikeEvent({ name: "wheel_spin", wheel: target, rpm });
   }
 
   async function reloadModel() {

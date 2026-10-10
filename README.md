@@ -78,6 +78,25 @@ Playback remains at 1× to retain the recorded freehub's tone and natural decele
 
 The HDRI is [Studio Small 09](https://polyhaven.com/a/studio_small_09) by Sergej Majboroda, licensed [CC0 by Poly Haven](https://polyhaven.com/license). Its local copy is `public/environment/studio.hdr` and the source file is `studio_small_09_2k.hdr`. Carbon and rubber maps are generated locally by the exporter. The browser does not depend on an external model, audio, texture, or environment CDN.
 
+## Analytics
+
+Google Analytics 4 uses the **Kai’s Bike** property and **Kai’s Bike Web** stream
+(`G-92G5KNHSB8`). No extra environment variable is needed. The tag loads after
+hydration in production exports and only collects on `kaichin.dev/bike/` (and its
+subpages), excluding localhost, previews, and the rest of `kaichin.dev`.
+
+GA4 automatically reports visits, engagement, device categories (desktop/mobile/tablet),
+scrolls, and outbound clicks. Custom `wheel_spin` events include the wheel and launch
+RPM, and `upgrade_select` events include the selected part name. The phone and desktop
+spin controls both send the same event. Audio and model contents are never sent.
+Google signals and ad personalization signals are disabled.
+The property has event-scoped custom dimensions for **Wheel** (`wheel`),
+**Upgrade part** (`part`), and **Launch RPM** (`rpm`) for use in reports and explorations.
+
+After deploying, visit `https://kaichin.dev/bike/`, spin a wheel or select an upgrade,
+and check the **Kai’s Bike → Reports → Realtime** report. Device categories appear
+under **Reports → User → Tech**.
+
 ## Checks
 
 ```sh

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { THEME_BOOTSTRAP } from "@/lib/theme-config";
+import GoogleAnalytics from "@/components/google-analytics";
 import AssetPreloads from "@/components/asset-preloads";
 import "./globals.css";
 
@@ -10,5 +11,5 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#171a1b", colorScheme: "dark" };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en" data-theme="dark" style={{ colorScheme: "dark" }} suppressHydrationWarning><head><AssetPreloads /><script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} /></head><body>{children}</body></html>;
+  return <html lang="en" data-theme="dark" style={{ colorScheme: "dark" }} suppressHydrationWarning><head><AssetPreloads /><script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} /></head><body>{children}<GoogleAnalytics /></body></html>;
 }
