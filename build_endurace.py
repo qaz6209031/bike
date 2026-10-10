@@ -1123,34 +1123,96 @@ flat_mount_caliper("rear_caliper", rear, 15, mount_to=rear + v(60, 58, 0),
 # ---------------------------------------------------------------- pedals (Shimano PD-R550 SPD-SL)
 RESIN = mat("Pedal Resin", (0.015, 0.015, 0.017), rough=0.45)
 
-PEDAL_PLATE = mat("Pedal Plate", (0.55, 0.56, 0.58), rough=0.35, metal=1.0)
+PEDAL_PLATE = mat("Pedal Plate", (0.42, 0.43, 0.45), rough=0.42, metal=1.0)      # brushed stainless
 PEDAL_HANG = math.radians(10)                                  # nose-down hang
 
+# Shimano PD-R550 body: Tripo-generated mesh (pedal_tripo.glb, kept out of git), checked against the owner's
+# pedal photo (cage_pedal_ref.jpg). In that file: axle along +Y (threaded end at -Y), nose +Z, cleat side +X, so it
+# is a RIGHT pedal; the left one is its mirror. Decimated 1.93M -> ~39k triangles, 4K textures -> 1K.
+PEDAL_GLB = os.path.join(OUT, "pedal_tripo.glb")
+PEDAL_AXLE_END = Vector((-0.045, -0.489, -0.047))               # threaded axle tip in the file's units
+PEDAL_MM = 100.0                                                 # file unit -> mm: 90 mm body, 53 mm Q-factor
+PEDAL_PC = 57.0                                                  # body centre, mm outward of the crank-arm centre
+_pedal_mesh = None
+
+def pedal_template():
+    """Import the Tripo pedal once: decimate, shrink and pack its textures, return the mesh datablock."""
+    global _pedal_mesh
+    if _pedal_mesh is not None:
+        return _pedal_mesh
+    before = set(bpy.data.objects.keys())
+    bpy.ops.import_scene.gltf(filepath=PEDAL_GLB)
+    new = [bpy.data.objects[n] for n in set(bpy.data.objects.keys()) - before]
+    src = next(o for o in new if o.type == "MESH")
+    dec = src.modifiers.new("decimate", "DECIMATE")
+    dec.ratio = 0.02
+    bpy.context.view_layer.update()
+    me = bpy.data.meshes.new_from_object(src.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    me.transform(src.matrix_world)
+    for poly in me.polygons:
+        poly.use_smooth = True
+    for m_ in me.materials:
+        m_.name = "PD-R550 Body"
+        for node in m_.node_tree.nodes:
+            if node.type == "TEX_IMAGE" and node.image and node.image.size[0] > 1024:
+                node.image.scale(1024, 1024)
+                node.image.pack()
+    for o in new:
+        bpy.data.objects.remove(o)
+    _pedal_mesh = me
+    return me
+
 def pedal(name, crank_end, s):
-    """Shimano PD-R550, traced from the owner's photo. Three zones front to back:
-    open nose frame | solid platform under a chevron steel plate (2 slots, 4 screws) | raised rear binding.
-    Local frame: x forward, y outward from the crank (pedal centre at y=42), z up."""
+    """Shimano PD-R550 on the crank: Tripo body + the chevron steel plate (2 slots, 4 screws) traced from the
+    owner's photo, ray-cast onto the body's cleat face. Local frame: x forward, y outward from the crank-arm
+    centre, z up (pedal hangs PEDAL_HANG nose-down)."""
     rot = Matrix.Rotation(PEDAL_HANG, 3, "Y")
-    eul = (0, PEDAL_HANG, 0)
     up_w = rot @ v(0, 0, 1)
     def L(x, y, z):
         return crank_end + rot @ v(x, s * y, z)
-    tube(f"{name}_spindle", [L(0, -2, 0), L(0, 8, 0)], 6.5, METAL)
-    tube(f"{name}_spindle_housing", [L(0, 6, 0), L(0, 14, 0)], 11, RESIN)
+    # file axes -> local: +X (cleat side) -> up, +Y (axle -> body) -> outward, +Z (nose) -> forward
+    M = Matrix(((0, 0, 1), (0, s, 0), (1, 0, 0)))
+    W3 = rot @ M * PEDAL_MM
+    pivot = L(0, -6, 0)                                          # thread tip inside the crank arm
+    W = Matrix.Translation(pivot * S) @ (W3 * S).to_4x4() @ Matrix.Translation(-PEDAL_AXLE_END)
+    me = pedal_template().copy()
+    me.name = f"{name}_body"
+    me.transform(W)
+    if W.determinant() < 0:                                      # mirrored (left) pedal: keep faces outward
+        me.flip_normals()
+    body = add(bpy.data.objects.new(f"{name}_body", me))
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    def on_body(x, y, lift):
+        """Point on the body's cleat face above local (x, y), lifted `lift` mm along the pedal's up."""
+        o = (L(x, y, 0) + up_w * 40) * S
+        hit, loc, _n, _i, ob, _m = scene.ray_cast(dg, o, -up_w)
+        while hit and ob.name != body.name:
+            hit, loc, _n, _i, ob, _m = scene.ray_cast(dg, loc - up_w * 1e-5, -up_w)
+        return (loc / S + up_w * lift) if hit else L(x, y, 14)
+    def flat_on_body(xc, yc, hx, hy, lift):
+        """Flat plane over the body face around local (xc, yc) +-(hx, hy): average surface normal from a grid of
+        ray hits, raised `lift` mm above the highest hit, so plates and prints lie flat instead of crumpling."""
+        hits, normals = [], []
+        for i in range(7):
+            for j in range(7):
+                o = (L(xc + hx * (i / 3 - 1), yc + hy * (j / 3 - 1), 0) + up_w * 40) * S
+                hit, loc, nrm, _i, ob, _m = scene.ray_cast(dg, o, -up_w)
+                while hit and ob.name != body.name:
+                    hit, loc, nrm, _i, ob, _m = scene.ray_cast(dg, loc - up_w * 1e-5, -up_w)
+                if hit:
+                    hits.append(loc / S)
+                    normals.append(nrm if nrm.dot(up_w) > 0 else -nrm)
+        n_ = sum(normals, Vector()).normalized() if normals else up_w
+        fwd = (rot @ v(1, 0, 0))
+        fwd = (fwd - n_ * fwd.dot(n_)).normalized()
+        lat = n_.cross(fwd) * -s                                  # in-plane direction of increasing local y
+        base = L(xc, yc, 0)
+        top = max(((h - base).dot(n_) for h in hits), default=14.0)
+        origin = base + n_ * (top + lift)
+        return lambda x, y: origin + fwd * (x - xc) + lat * (y - yc)
 
-    # 1) nose: rounded-trapezoid resin frame around an open window
-    def nose_pt(t):
-        """Rounded rectangle (x 8..46, y +-27) tapering to +-20 at the nose; t in [0, 1)."""
-        ang = 2 * math.pi * t
-        c_, s_ = math.cos(ang), math.sin(ang)
-        x = 27 + 19 * math.copysign(abs(c_) ** 0.35, c_)
-        taper = 1 - 0.26 * (x - 8) / 38
-        return x, 27 * taper * math.copysign(abs(s_) ** 0.35, s_)
-    nose = [L(x, 42 + y, 0.5) for x, y in (nose_pt(k / 64) for k in range(64))]
-    ribbon(f"{name}_nose_frame", nose, 12, 9, RESIN, lambda p, t: t.cross(up_w), closed=True)
-
-    # 2) platform + chevron steel plate
-    box(f"{name}_platform", L(-1, 42, 0), (24, 62, 13), RESIN, rot=eul, bevel=2.5)
+    # chevron steel plate across the platform (owner photo), 4 screws
     xf = lambda y: 9 - 4 * abs(y) / 30                       # plate front edge
     xr = lambda y: -10 - 4 * abs(y) / 30                     # plate rear edge
     pieces = []
@@ -1162,21 +1224,22 @@ def pedal(name, crank_end, s):
             [(xr(y1), y1), (xr(y1) + 5, y1), (xr(y2) + 5, y2), (xr(y2), y2)],             # rear of slot
             [(xr(y2), y2), (xf(y2), y2), (xf(y3), y3), (xr(y3), y3)],                     # outer end
         ]
-    place(f"{name}_cleat_plate", shapes_bmesh(pieces, cuts=1), lambda x, y: L(x, 42 + y, 6.9), PEDAL_PLATE)
+    plate_map = flat_on_body(-2.5, PEDAL_PC, 13, 30, 0.3)
+    place(f"{name}_cleat_plate", shapes_bmesh(pieces, cuts=1), lambda x, y: plate_map(x, PEDAL_PC + y), PEDAL_PLATE)
+    up_p = (plate_map(0, PEDAL_PC + 1) - plate_map(0, PEDAL_PC)).cross(plate_map(1, PEDAL_PC) - plate_map(0, PEDAL_PC))
+    up_p = up_p.normalized() if up_p.dot(up_w) > 0 else -up_p.normalized()
     for i, (x, y) in enumerate(((xf(27) - 2.5, -27), (xr(27) + 2.5, -27), (xf(27) - 2.5, 27), (xr(27) + 2.5, 27))):
-        place(f"{name}_screw_{i}", disc_bmesh(1.6, 12), lambda px, py, x=x, y=y: L(x + px, 42 + y + py, 7.2), METAL)
-
-    # 3) rear binding: raised block, top sloping down toward the back
-    tilt = math.radians(-12)
-    r_blk = Matrix.Rotation(PEDAL_HANG + tilt, 3, "Y")
-    blk_c = L(-27, 42, 3)
-    box(f"{name}_binding", blk_c, (30, 58, 16), RESIN, rot=(0, PEDAL_HANG + tilt, 0), bevel=3)
-    top = blk_c + r_blk @ v(-2, 0, 8.15)
-    d_, u_ = v(0, -1, 0), r_blk @ v(1, 0, 0)                 # reads toward the crank, tops forward
-    decal(f"{name}_spdsl", "SPD-SL", FONT_HEAVY, 30, 6.5, lambda x, y: top + d_ * (x - 6 * s) + u_ * y,
-          DECAL_WHITE, cuts=2)
-    place(f"{name}_tension_hole", disc_bmesh(2.6, 16), lambda x, y: top + d_ * (x + 16 * s) + u_ * (y - 2) +
-          r_blk @ v(0, 0, 0.1), DARK)
+        place(f"{name}_screw_{i}", disc_bmesh(1.6, 12), lambda px, py, x=x, y=y: plate_map(x + px, PEDAL_PC + y + py) +
+              up_p * 0.25, METAL)
+    if W.determinant() < 0:
+        # mirroring would print the body texture's SPD-SL backwards: cover it with a correctly reading print
+        # the texture's print sits on the binding at file (Y 0.165, Z -0.33) -> local x -28.3, y PC + 2.4
+        tx, ty = -28.3, PEDAL_PC + 2.4
+        pm = flat_on_body(tx, ty, 6.5, 19, 0.25)
+        # reads toward the crank, letter tops toward the nose, facing up (as on the owner's left pedal)
+        place(f"{name}_spdsl_patch", rect_bmesh(38, 13, 12, 4), lambda x, y: pm(tx + y, ty + x), RESIN)
+        decal(f"{name}_spdsl", "SPD-SL", FONT_HEAVY, 24, 5.4, lambda x, y: pm(tx + y, ty + x) + up_w * 0.2,
+              DECAL_WHITE, cuts=2)
 
 # ---------------------------------------------------------------- drivetrain (SRAM Rival eTap AXS 2x12)
 # Traced from the owner's drive-side photo: chain on 48T x 36T, black one-piece chainrings with

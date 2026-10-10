@@ -22,3 +22,6 @@ colnago_reference.png
 studio_small_09_2k.hdr
 *_ref*.png
 dtswiss_logo_official.svg
+
+# Tripo-generated PD-R550 source mesh (third-party asset, kept local; baked into the site model)
+pedal_tripo.glb
