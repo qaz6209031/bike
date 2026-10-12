@@ -1494,6 +1494,9 @@ def rear_derailleur_from_tripo():
     for f in bm.faces:
         if all(vert.co.x < 0 for vert in f.verts):
             f.material_index = 1
+        # the AXS battery (file Y < -0.205, Z 0.12..0.42) is light grey in the texture; the owner's is black
+        elif all(vert.co.y < -0.205 and 0.12 < vert.co.z < 0.42 for vert in f.verts):
+            f.material_index = 1
     def smooth01(t):
         t = min(max(t, 0.0), 1.0)
         return t * t * (3 - 2 * t)
