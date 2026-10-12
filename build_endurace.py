@@ -1527,6 +1527,7 @@ rear_derailleur_from_tripo()
 FD_GLB = os.path.join(OUT, "fd_tripo.glb")
 FD_SILVER = mat("FD Cage Polished", (0.9, 0.9, 0.92), rough=0.18, metal=0.95)
 FD_MM, FD_TILT = 89.0, math.radians(10)
+FD_BODY_Y = -29.6                                                # body mid-plane: inner face (-0.25 file) at y -22.1
 FD_TAIL_FILE = Vector((-0.46, -0.43))                            # cage tail tip (file Y, Z)
 FD_TAIL_AT = Vector(((R48 + 6) * math.cos(math.radians(141)), (R48 + 6) * math.sin(math.radians(141))))
 
@@ -1562,7 +1563,8 @@ def front_derailleur_from_tripo():
         wx = FD_TAIL_AT.x + dy * c_ - dz * s_                    # side plane: tilt nose-up about the tail tip
         wz = FD_TAIL_AT.y + dy * s_ + dz * c_
         cage_y = -49.5 - x * (24.0 if x > 0 else 30.0)           # outer plate -56.7, inner -40.5 (clears the chain)
-        body_y = -42.0 - x * (72.0 if x > 0 else 30.0)           # outer half kept, mirrored inner half flattened
+        # body hugs the seat tube (owner photos fd_ref_3..5): inner face ~1 mm off the tube's drive side (y -20)
+        body_y = FD_BODY_Y - x * (72.0 if x > 0 else 30.0)       # outer half kept, mirrored inner half flattened
         t = smooth01((z + 0.02) / 0.14)                          # cage below file z -0.02, body above 0.12
         vert.co = Vector((wx, cage_y * (1 - t) + body_y * t, wz)) * S
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
@@ -1572,6 +1574,13 @@ def front_derailleur_from_tripo():
     return add(bpy.data.objects.new("fd_body", me))
 
 fd_body = front_derailleur_from_tripo()
+# braze-on: black aluminium tab on the seat tube's drive side the body bolts to, bolt head on the outboard face
+_st_s = 128.0 / math.sin(sta)                                    # seat-tube station at the tab height
+_tab_c = st_dir * _st_s + v(0, -(st_profile(_st_s)[0] + 1.0), 0) + st_fwd * 4
+box("fd_braze_on_tab", _tab_c, (16, 5, 22), RD_BLACK, rot=(0, -(math.pi / 2 - sta), 0), bevel=1.5)
+_bolt = _tab_c + st_fwd * 8.6 + st_dir * -4                    # bolt head on the tab's front face (fd_ref_3)
+cyl("fd_braze_on_bolt", _bolt, 3.6, 1.6, METAL, axis="X")
+cyl("fd_braze_on_bolt_hex", _bolt + st_fwd * 0.9, 1.6, 0.2, RESIN, axis="X", verts=6)
 # the file has no texture: SRAM print on the motor's outer face, lower middle (owner photo fd_ref_1)
 bpy.context.view_layer.update()
 _c, _s = math.cos(FD_TILT), math.sin(FD_TILT)
