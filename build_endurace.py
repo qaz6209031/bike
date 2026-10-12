@@ -1301,12 +1301,19 @@ for i, t in enumerate(COGS):
     extrude_profile(f"cog_{t}", loops, cog_y(i) - 0.8, 1.6, CASSETTE, origin=rear)
 
 # rear derailleur geometry (relative to the axle, drive side view)
-CHAIN_COG = 11                                        # 36T, as in the photo
+CHAIN_COG = 0                                         # 10T: matches the Tripo derailleur's rest pose
 cy = cog_y(CHAIN_COG)
-# pulley centres measured on chain_ref.jpg against the rear axle (UDH cap ~24 mm -> 2.4 px/mm): the cage hangs
-# almost straight down from the P-knuckle with the chain on the 36T cog
-U_P = rear + v(52, 0, -100)                            # upper jockey centre
-L_P = rear + v(76, 0, -153)                            # lower jockey centre
+# pulley centres: the Tripo derailleur's own pulleys, mapped with its hanger bolt on the UDH hanger
+RD_GLB = os.path.join(OUT, "rd_tripo.glb")                     # Tripo-generated Rival AXS RD, kept out of git
+RD_MM = 185.0                                                   # file unit -> mm (12T pulley tips ~27.7 mm)
+RD_BOSS_FILE = Vector((0.070, 0.425))                           # hanger-bolt hole (file Y fore-aft, Z up)
+RD_BOSS_AT = (-17.0, -27.0)                                     # ... placed here (x, z from the rear axle, chain_ref.jpg)
+RD_PULLEYS_FILE = (Vector((0.265, 0.128)), Vector((0.040, -0.300)))   # upper / lower pulley centres in the file
+def rd_file_to_xz(p):
+    """File (Y, Z) -> rear-axle-relative (x, z) mm."""
+    return (RD_BOSS_AT[0] + (p.x - RD_BOSS_FILE.x) * RD_MM, RD_BOSS_AT[1] + (p.y - RD_BOSS_FILE.y) * RD_MM)
+U_P = rear + v(rd_file_to_xz(RD_PULLEYS_FILE[0])[0], 0, rd_file_to_xz(RD_PULLEYS_FILE[0])[1])   # upper jockey centre
+L_P = rear + v(rd_file_to_xz(RD_PULLEYS_FILE[1])[0], 0, rd_file_to_xz(RD_PULLEYS_FILE[1])[1])   # lower jockey centre
 R_JOCKEY = pitch_r(12)
 
 # ---- chain: true tangent path, links every pitch
@@ -1452,183 +1459,129 @@ R_ = lambda x, y, z: rear + v(x, y, z)                  # rear-axle-relative poi
 # UDH hanger (traced earlier) + its two bolts
 hanger = [(-8, 10), (12, 6), (8, -22), (-10, -38), (-22, -32), (-16, -4)]
 extrude_profile("rd_udh_hanger", [hanger], -UDH_OUTER_Y, 4, DARK, origin=rear)   # axle cap sits on its face
-for k, (hx, hz) in enumerate(((-4, -10), (-13, -27))):
+for k, (hx, hz) in enumerate(((-4, -10),)):          # the lower hole is the derailleur's own mounting bolt
     cyl(f"rd_hanger_bolt_{k}", rear + v(hx, -74.6, hz), 3, 1.4, METAL)
 
-# B-knuckle (chain_ref.jpg): from the hanger boss a tall gunmetal piece drops straight down; RIVAL runs up its
-# outer face; the AXS battery sits right behind it, H/L screws stick out rearward under the battery
-BOSS = R_(-17, -80, -27)
-cyl("rd_bk_boss", BOSS, 11, 10, RD_BLACK)
-_bk_a, _bk_b = R_(-20, -88, -30), R_(-40, -91, -84)                          # broad flat plate, boss -> body
-box("rd_bk_arm", (_bk_a + _bk_b) / 2, ((_bk_b - _bk_a).length + 10, 15, 25), RD_BLACK,
-    rot=basis(_bk_b - _bk_a, up=v(1, 0, 0)).to_euler(), bevel=5)
-box("rd_bk_body", R_(-44, -88, -86), (30, 22, 22), RD_BLACK, rot=(0, math.radians(8), 0), bevel=6)
-fuse("rd_b_knuckle", ["rd_bk_boss", "rd_bk_arm", "rd_bk_body"], voxel=0.8, smooth=6)
-cyl("rd_mount_bolt", BOSS + v(0, -6.4, 0), 6.5, 1.2, RD_BLACK)                 # hanger bolt head
-cyl("rd_mount_bolt_hex", BOSS + v(0, -7.1, 0), 3.0, 0.3, RESIN, verts=6)
-bk_dir = (R_(-40, 0, -86) - R_(-17, 0, -27)).normalized()                      # down the B-knuckle (side view)
-bk_fwd = v(-bk_dir.z, 0, bk_dir.x)
-bk_fwd = bk_fwd if bk_fwd.x > 0 else -bk_fwd
-panel_c = R_(-29, -97.4, -57)                                                 # on the plate's outer face
-# RIVAL reads bottom -> top with the letter tops toward the rear (faces outboard)
-place("rd_bk_panel", rect_bmesh(44, 11, 16, 4), lambda x, y: panel_c - bk_dir * x - bk_fwd * y, BATT_GREY)
-decal("rd_bk_rival", "RIVAL", FONT_HEAVY, 30, 7, lambda x, y: panel_c + v(0, -0.15, 0) - bk_dir * x - bk_fwd * y, LOGO,
-      cuts=2)
-cyl("rd_b_screw", R_(-4, -82, -40), 1.8, 7, METAL, axis="X")                   # B-tension screw
-for k, (dx, dz) in enumerate(((-52, -91), (-44, -102))):                       # H / L limit screws, pointing back
-    cyl(f"rd_limit_screw_{k}", R_(dx, -86, dz), 1.7, 9, METAL, axis="X")
-    cyl(f"rd_limit_screw_head_{k}", R_(dx - 4.8, -86, dz), 2.6, 1.6, METAL, axis="X")
-    cyl(f"rd_limit_screw_hex_{k}", R_(dx - 5.7, -86, dz), 1.2, 0.3, RESIN, axis="X", verts=6)
+# Rival eTap AXS body from the Tripo model (rd_tripo.glb). Only its outer (+X) half is genuine - the inner half is
+# a mirrored copy (backwards SRAM print) - so the outer half keeps 50 % of its depth (cage plate ~7 mm off the chain,
+# battery ~21 mm, motor ~24 mm) and the inner half is flattened to a thin plain-black back (15 %): no holes. Mapping: file +Y -> forward, +Z -> up,
+# +X -> outboard (-Y). The mid-plane sits in the chain line; only the top (B-knuckle/boss, file z > 0.29) bends
+# 10.6 mm outboard so the boss's back face lands on the hanger.
+BATT_TILT = math.radians(8)                                     # (shared with the front derailleur battery)
+RD_SQUASH, RD_BEND = 0.5, -(UDH_OUTER_Y + 1.2 + cy)            # chain line (-63.4) -> 1.2 mm off the hanger face
 
-# AXS battery, almost upright behind the B-knuckle: grey edge stripe outside, grey SRAM cover facing rearward
-BATT_TILT = math.radians(8)
-batt_rot = Matrix.Rotation(BATT_TILT, 3, "Y")
-batt_c = R_(-65, -95, -68)                                 # chain_ref: x -77..-54, z -44..-92
-box("rd_battery", batt_c, (23, 21, 48), RD_BLACK, rot=(0, BATT_TILT, 0), bevel=4.5)
-bx, bz = batt_rot @ v(1, 0, 0), batt_rot @ v(0, 0, 1)
-cover_c = batt_c - bx * 11.5
-box("rd_battery_cover", cover_c, (1.2, 18, 43), BATT_GREY, rot=(0, BATT_TILT, 0), bevel=0.5)
-decal("rd_battery_sram", "SRAM", FONT_HEAVY, 30, 7.5, lambda x, y: cover_c - bx * 0.7 - bz * x - v(0, 1, 0) * y,
-      LOGO, cuts=2)
-box("rd_battery_edge", batt_c - bx * 8.5 + v(0, -10.6, 0), (5, 0.6, 42), BATT_GREY, rot=(0, BATT_TILT, 0), bevel=0.2)
-box("rd_battery_latch", batt_c + bz * 25 + bx * 2, (10, 12, 3), RD_GUN, rot=(0, BATT_TILT, 0), bevel=1.2)
+def rear_derailleur_from_tripo():
+    before = set(bpy.data.objects.keys())
+    bpy.ops.import_scene.gltf(filepath=RD_GLB)
+    new_obs = [bpy.data.objects[n] for n in set(bpy.data.objects.keys()) - before]
+    src = next(o for o in new_obs if o.type == "MESH")
+    dec = src.modifiers.new("decimate", "DECIMATE")
+    dec.ratio = 0.06
+    bpy.context.view_layer.update()
+    me = bpy.data.meshes.new_from_object(src.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    me.transform(src.matrix_world)
+    for o in new_obs:
+        bpy.data.objects.remove(o)
+    for m_ in me.materials:
+        m_.name = "Rival AXS RD"
+        for node in m_.node_tree.nodes:
+            if node.type == "TEX_IMAGE" and node.image and node.image.size[0] > 1024:
+                node.image.scale(1024, 1024)
+                node.image.pack()
+    me.materials.append(RD_BLACK)                                # slot 1: the flattened (mirrored) inner half
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    for f in bm.faces:
+        if all(vert.co.x < 0 for vert in f.verts):
+            f.material_index = 1
+    def smooth01(t):
+        t = min(max(t, 0.0), 1.0)
+        return t * t * (3 - 2 * t)
+    for vert in bm.verts:
+        x, y, z = vert.co
+        x_mm, z_mm = rd_file_to_xz(Vector((y, z)))
+        # only the hanger boss and the top of the B-knuckle (within ~20 mm of the bolt) move out onto the hanger;
+        # battery, parallelogram, cage and pulleys stay in the chain line, undistorted
+        bend = 1 - smooth01(((Vector((y, z)) - RD_BOSS_FILE).length - 0.11) / 0.06)
+        lateral = cy + RD_BEND * bend - x * (RD_SQUASH if x > 0 else 0.15 * RD_SQUASH) * RD_MM
+        vert.co = (rear + v(x_mm, 0, z_mm)) * S + Vector((0, lateral * S, 0))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    for f in bm.faces:
+        f.smooth = True
+    bm.to_mesh(me)
+    bm.free()
+    me.name = "rd_body"
+    return add(bpy.data.objects.new("rd_body", me))
 
-# parallelogram: grey outer link (SRAM print) on top, black inner link below, silver pivots;
-# slants inboard from the B-knuckle to the P-knuckle (chain on the 36T)
-def link(name, a, b, size, m):
-    d = b - a
-    box(name, (a + b) / 2, (d.length + size[0], size[1], size[2]), m, rot=basis(d).to_euler(), bevel=1.8)
-    return basis(d)
-L_OUT = (R_(-36, -96, -76), R_(18, -68, -84))
-L_IN = (R_(-36, -84, -97), R_(16, -56, -108))
-Mo = link("rd_link_outer", *L_OUT, (12, 5, 15), BATT_GREY)
-link("rd_link_inner", *L_IN, (10, 4, 10), RD_BLACK)
-lx, ly, lz = Mo.col[0], Mo.col[1], Mo.col[2]
-lc = (L_OUT[0] + L_OUT[1]) / 2 - ly * 2.6 + lx * 6 - lz * 2
-decal("rd_link_sram", "SRAM", FONT_HEAVY, 17, 4.0, lambda x, y: lc - ly * 0.15 + lx * x + lz * y, LOGO, cuts=2)
-for k, p_ in enumerate(L_OUT + L_IN):
-    cyl(f"rd_pivot_{k}", p_ + v(0, -2.8 if k < 2 else -2.3, 0), 3.0, 2.0, METAL)
-    cyl(f"rd_pivot_torx_{k}", p_ + v(0, -3.9 if k < 2 else -3.4, 0), 1.3, 0.2, RESIN, verts=6)
+rear_derailleur_from_tripo()
 
-# P-knuckle: the big part - motor + cage-pivot housing (rounded, round cover on the outer face) with the
-# label block below it toward the parallelogram
-PK = R_(44, -50, -92)
-box("rd_pk_main", PK, (56, 28, 36), RD_BLACK, rot=(0, math.radians(-8), 0), bevel=10)
-box("rd_pk_lower", R_(17, -48, -112), (34, 24, 26), RD_BLACK, rot=(0, math.radians(-8), 0), bevel=7)
-fuse("rd_pknuckle", ["rd_pk_main", "rd_pk_lower"], voxel=0.8, smooth=5)
-cyl("rd_pk_cover", R_(50, -64.6, -90), 15.5, 1.4, RD_BLACK)                       # round cage-pivot cover
-cyl("rd_pk_cover_ring", R_(50, -65.4, -90), 12.5, 0.2, RD_GUN)
-decal("rd_pk_axs", "AXS", FONT_HEAVY, 7, 2.2, lambda x, y: R_(50 + x, -65.6, -90 + y - 7), RD_GUN, cuts=1)
-face = R_(17, -60.3, -114)
-box("rd_label", face, (22, 0.5, 15), BATT_GREY, rot=(0, math.radians(-8), 0), bevel=0.4)
-lab = lambda dx, dz: (lambda x, y: face + v(dx + x, -0.45, dz + y))
-decal("rd_label_model", "RD-RIV-E-D1", FONT_COND, 15, 2.2, lab(0, 4.0), LOGO, cuts=1)
-decal("rd_label_axs", "AXS", FONT_HEAVY, 8, 2.6, lab(-5, 0), LOGO, cuts=1)
-decal("rd_label_ce", "CE", FONT_BOLD, 5, 2.6, lab(5.5, 0), LOGO, cuts=1)
-for k in range(3):
-    box(f"rd_label_line_{k}", face + v(0, -0.45, -4.5 - 2.2 * k), (17 - 3 * k, 0.1, 0.6), LOGO, bevel=0.05)
-cyl("rd_axs_button", R_(28, -64.2, -80), 3.6, 1.0, RD_GUN)                       # AXS function button
-cyl("rd_axs_led", R_(28, -64.8, -80), 1.2, 0.2, METAL)
-cyl("rd_cage_lock", R_(72, -52, -100), 3.0, 2.4, METAL, axis="X")               # cage lock button
-
-# cage pivot drum (on the upper pulley axis), bridging the P-knuckle and the outer cage plate
-cyl("rd_cage_drum", v(U_P.x, cy - 12.5, U_P.z), 14, 9, RD_BLACK)
-cyl("rd_cage_drum_cap", v(U_P.x, cy - 17.3, U_P.z), 10, 0.8, RD_GUN)
-
-# cage: outer plate (window + chin beyond the lower pulley) with grey anodised inlay, inner plate
-ax = (xz(L_P) - xz(U_P)).normalized()
-pr = Vector((-ax.y, ax.x))
-chin = xz(L_P) + ax * 20
-chin = xz(L_P) + ax * 22
-outer_cage = stadium(xz(U_P), xz(L_P), 16, 21)                       # widens around the lower pulley
-outer_cage = outer_cage[:15] + [tuple(chin + pr * 13), tuple(chin - pr * 15)] + outer_cage[15:]
-cage_len = (xz(L_P) - xz(U_P)).length
-win_c = xz(U_P) + ax * (cage_len * 0.5) + pr * 9                       # window beside the chain run
-window = [tuple(win_c + ax * (8 * math.cos(2 * math.pi * k / 20)) + pr * (3.5 * math.sin(2 * math.pi * k / 20)))
-          for k in range(20)]
-extrude_profile("rd_cage_outer", [outer_cage, window], cy - 8.5, 2.2, RD_BLACK)
-stripe = stadium(xz(U_P) + ax * (cage_len * 0.25) + pr * 12, xz(L_P) + ax * 10 + pr * 16.5, 2.4, 2.4)
-extrude_profile("rd_cage_inlay", [stripe], cy - 8.9, 0.4, RD_ACCENT)          # grey stripe along the front edge
-inner_cage = stadium(xz(U_P), xz(L_P), 13.5, 13)
-extrude_profile("rd_cage_inner", [inner_cage], cy + 5.0, 2.0, RD_BLACK)
-strip = stadium(xz(U_P) + ax * (cage_len * 0.3), xz(L_P) - ax * 6, 3, 3)
-extrude_profile("rd_cage_inner_accent", [[tuple(Vector(p_) - pr * 9) for p_ in strip]], cy + 7.0, 0.4, RD_ACCENT)
-
-# 12T X-Sync pulleys: alternating tall/short teeth, six windows, hub; silver bolts outside, nuts inside
-for nm, pc in (("upper", U_P), ("lower", L_P)):
-    wins = [window_loop(8.5, 15.0, 2 * math.pi * k / 6 + 0.12, 2 * math.pi * (k + 1) / 6 - 0.12, 6) for k in range(6)]
-    extrude_profile(f"rd_jockey_{nm}", [sprocket_loop(12, tip=3.0)] + wins, cy - 1.5, 3, DARK, origin=v(pc.x, 0, pc.z))
-    cyl(f"rd_jockey_hub_{nm}", v(pc.x, cy, pc.z), 8.0, 5.4, RD_BLACK)
-    cyl(f"rd_jockey_spacer_{nm}", v(pc.x, cy - 1.0, pc.z), 4.5, 15.5, DARK)
-    cyl(f"rd_jockey_bolt_{nm}", v(pc.x, cy - 9.4, pc.z), 4.2, 1.6, METAL)
-    cyl(f"rd_jockey_bolt_hex_{nm}", v(pc.x, cy - 10.25, pc.z), 1.8, 0.2, RESIN, verts=6)
-    cyl(f"rd_jockey_nut_{nm}", v(pc.x, cy + 7.6, pc.z), 3.6, 1.2, DARK)
-
-# ---- front derailleur (SRAM Rival AXS E1, braze-on), SRAM product render + owner photos fd_ref_1..5
-# (IMG_6947-6951): motor housing with SRAM on its outer face and the AXS battery clipped on behind,
-# braze-on bolt, black outer link with H / L limit screws on silver pivots, polished silver winged outer
-# cage (RIVAL on the tail) over the big ring, black inner plate, bridge and tail rivet.
+# ---- front derailleur (SRAM Rival AXS E1, braze-on): Tripo-generated shape (fd_tripo.glb, kept out of git).
+# The file has no textures and only its outer (+X) side is genuine. File axes: +Y forward, +Z up, +X outboard.
+# Scaled 89 mm/unit and tilted 10 deg nose-up so the cage (tail tip -> front end) spans the same 80 mm arc over the
+# 48T ring as the cage traced from the owner's photos (95..141 deg at R48 + 6). Depth is set per region: the cage
+# plates go to their real places (outer 10 mm outboard of the chain, inner 4 mm inboard), the body keeps its outer
+# half and flattens the mirrored inner half toward the seat tube; the linkage blends between the two.
+FD_GLB = os.path.join(OUT, "fd_tripo.glb")
 FD_SILVER = mat("FD Cage Polished", (0.9, 0.9, 0.92), rough=0.18, metal=0.95)
-FD_ARM = mat("FD Arm Matte", (0.012, 0.012, 0.013), rough=0.8)
-st_rot = (0, -(math.pi / 2 - sta), 0)                    # local Z along the seat tube
-deg = math.radians
-def r_top(a_deg):
-    return R48 + 10 + 13 * ((141 - a_deg) / 46) ** 0.7
-cage_outer = [((R48 + 6) * math.cos(deg(a_)), (R48 + 6) * math.sin(deg(a_))) for a_ in range(95, 142, 2)]
-cage_outer += [(r_top(a_) * math.cos(deg(a_)), r_top(a_) * math.sin(deg(a_))) for a_ in range(141, 94, -2)]
-co = extrude_profile("fd_cage_outer", [cage_outer], RING_Y - 10.6, 1.8, FD_SILVER)
-cb = co.modifiers.new("polish_edge", "BEVEL")                       # rolled, polished edges
-cb.width, cb.segments = 0.7 * S, 3
-rib = [((R48 + 9.5) * math.cos(deg(a_)), (R48 + 9.5) * math.sin(deg(a_))) for a_ in range(97, 140, 2)]
-rib += [((R48 + 12.5) * math.cos(deg(a_)), (R48 + 12.5) * math.sin(deg(a_))) for a_ in range(139, 96, -2)]
-extrude_profile("fd_cage_rib", [rib], RING_Y - 11.3, 0.8, FD_SILVER)  # pressed stiffening rib
-cage_inner = [((R48 + 6) * math.cos(deg(a_)), (R48 + 6) * math.sin(deg(a_))) for a_ in range(98, 133, 3)]
-cage_inner += [((R48 + 15) * math.cos(deg(a_)), (R48 + 15) * math.sin(deg(a_))) for a_ in range(132, 97, -3)]
-# inner plate 2.5 mm further inboard: on 48T x 36T the chain angles inboard and AXS auto-trim moves the cage over
-extrude_profile("fd_cage_inner", [cage_inner], RING_Y + 6.5, 1.4, CARBON)
-band = [((R48 + 15) * math.cos(deg(a_)), (R48 + 15) * math.sin(deg(a_))) for a_ in range(112, 133, 2)]
-band += [((R48 + 22) * math.cos(deg(a_)), (R48 + 22) * math.sin(deg(a_))) for a_ in range(131, 111, -2)]
-extrude_profile("fd_rival_band", [band], RING_Y - 11.0, 0.3, AXS_GREY)
-decal("fd_rival", "RIVAL", FONT_HEAVY, 20, 4.6, ring_map(v(0, 0, 0), -1, deg(122), R48 + 18.5,
-      lambda r_: -(RING_Y - 11.1)), LOGO, cuts=2)
-tail = v((R48 + 8) * math.cos(deg(138)), RING_Y - 3, (R48 + 8) * math.sin(deg(138)))
-cyl("fd_tail_rivet", tail, 2.6, 16, METAL)                           # spacer rivet tying the plates at the tail
-bridge = v((R48 + 26) * math.cos(deg(101)), RING_Y - 4, (R48 + 26) * math.sin(deg(101)))
-box("fd_cage_bridge", bridge, (24, 18, 6), FD_SILVER, rot=along(v(-math.sin(deg(101)), 0, math.cos(deg(101)))), bevel=2)
-for k, off in enumerate((-9, 9)):                        # tabs the link arms pivot on
-    box(f"fd_cage_tab_{k}", bridge + v(off, -6, 6), (5, 3, 12), FD_SILVER, bevel=1.2)
+FD_MM, FD_TILT = 89.0, math.radians(10)
+FD_TAIL_FILE = Vector((-0.46, -0.43))                            # cage tail tip (file Y, Z)
+FD_TAIL_AT = Vector(((R48 + 6) * math.cos(math.radians(141)), (R48 + 6) * math.sin(math.radians(141))))
 
-# motor housing + AXS battery (clipped on behind), braze-on bolt
-st_R = Matrix.Rotation(-(math.pi / 2 - sta), 3, "Y")
-motor_c = v(-38, -42, 156)
-box("fd_motor_body", motor_c, (40, 22, 34), RD_BLACK, rot=st_rot, bevel=6)
-box("fd_motor_cover", motor_c + v(0, -10.5, 2), (34, 2, 28), RD_GUN, rot=st_rot, bevel=1.5)
-mface = motor_c + v(0, -11.8, 2)
-decal("fd_motor_sram", "SRAM", FONT_HEAVY, 18, 4.4, lambda x, y: mface + st_R @ v(x + 3, 0, y - 6), PRINT_GREY, cuts=2)
-fd_batt_c = motor_c + v(-28, 0, 6)
-box("fd_battery", fd_batt_c, (21, 24, 42), RD_BLACK, rot=(0, BATT_TILT, 0), bevel=4.5)
-box("fd_battery_cover", fd_batt_c + v(-10.8, 0, 0), (1.2, 20, 37), BATT_GREY, rot=(0, BATT_TILT, 0), bevel=0.5)
-box("fd_battery_latch", fd_batt_c + v(-3, 0, 22), (10, 12, 3), RD_GUN, rot=(0, BATT_TILT, 0), bevel=1.2)
-cyl("fd_braze_on_bolt", v(-60, -26, 150), 5.5, 7, DARK, axis="X", verts=6)
-cyl("fd_braze_on_washer", v(-56.2, -26, 150), 7.0, 1.0, METAL, axis="X")
+def front_derailleur_from_tripo():
+    before = set(bpy.data.objects.keys())
+    bpy.ops.import_scene.gltf(filepath=FD_GLB)
+    new_obs = [bpy.data.objects[n] for n in set(bpy.data.objects.keys()) - before]
+    src = next(o for o in new_obs if o.type == "MESH")
+    dec = src.modifiers.new("decimate", "DECIMATE")
+    dec.ratio = 0.04
+    bpy.context.view_layer.update()
+    me = bpy.data.meshes.new_from_object(src.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    me.transform(src.matrix_world)
+    for o in new_obs:
+        bpy.data.objects.remove(o)
+    me.materials.clear()
+    for m_ in (RD_BLACK, FD_SILVER, CARBON):                     # 0 body/linkage, 1 outer cage, 2 inner cage
+        me.materials.append(m_)
+    def smooth01(t):
+        t = min(max(t, 0.0), 1.0)
+        return t * t * (3 - 2 * t)
+    c_, s_ = math.cos(FD_TILT), math.sin(FD_TILT)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    for f in bm.faces:
+        cz = sum(vv.co.z for vv in f.verts) / len(f.verts)
+        cx = sum(vv.co.x for vv in f.verts) / len(f.verts)
+        f.material_index = (1 if cx > 0 else 2) if cz < -0.07 else 0
+        f.smooth = True
+    for vert in bm.verts:
+        x, y, z = vert.co
+        dy, dz = (y - FD_TAIL_FILE.x) * FD_MM, (z - FD_TAIL_FILE.y) * FD_MM
+        wx = FD_TAIL_AT.x + dy * c_ - dz * s_                    # side plane: tilt nose-up about the tail tip
+        wz = FD_TAIL_AT.y + dy * s_ + dz * c_
+        cage_y = -49.5 - x * (24.0 if x > 0 else 30.0)           # outer plate -56.7, inner -40.5 (clears the chain)
+        body_y = -42.0 - x * (72.0 if x > 0 else 30.0)           # outer half kept, mirrored inner half flattened
+        t = smooth01((z + 0.02) / 0.14)                          # cage below file z -0.02, body above 0.12
+        vert.co = Vector((wx, cage_y * (1 - t) + body_y * t, wz)) * S
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(me)
+    bm.free()
+    me.name = "fd_body"
+    return add(bpy.data.objects.new("fd_body", me))
 
-# links: black outer link (H / L screws on its face) + inner arm, silver pivots
-fd_top_out, fd_top_in = v(-30, -50, 139), v(-50, -46, 139)
-for k, (top, bot) in enumerate(((fd_top_out, bridge + v(9, -8, 10)), (fd_top_in, bridge + v(-9, -8, 10)))):
-    d_ = bot - top
-    box(f"fd_link_arm_{k}", (top + bot) / 2, (d_.length + 8, 4.5 if k == 0 else 3.5, 11 if k == 0 else 8),
-        RD_BLACK if k == 0 else FD_ARM, rot=basis(d_).to_euler(), bevel=1.8)
-    for pnt in (top, bot):
-        cyl(f"fd_pivot_{k}_{int(pnt.z)}", pnt + v(0, -3.2, 0), 2.6, 3, METAL)
-        cyl(f"fd_pivot_torx_{k}_{int(pnt.z)}", pnt + v(0, -4.8, 0), 1.1, 0.2, RESIN, verts=6)
-plate_c = v(-26, -53.5, 141)
-box("fd_limit_plate", plate_c, (16, 1.5, 22), RD_BLACK, rot=st_rot, bevel=1)
-for k, (dz, letter) in enumerate(((7, "H"), (-4, "L"))):              # H (upper) / L (lower) limit screws
-    sp = plate_c + st_R @ v(3, 0, dz)
-    cyl(f"fd_limit_screw_{k}", sp + v(0, -1.2, 0), 2.3, 1.2, METAL)
-    cyl(f"fd_limit_screw_hex_{k}", sp + v(0, -1.9, 0), 1.0, 0.2, RESIN, verts=6)
-    decal(f"fd_limit_{letter}", letter, FONT_BOLD, 2.4, 2.6, lambda x, y, sp=sp: sp + v(0, -0.85, 0) + st_R @ v(-6 - x, 0, y),
-          DECAL_WHITE, cuts=1)
+fd_body = front_derailleur_from_tripo()
+# the file has no texture: SRAM print on the motor's outer face, lower middle (owner photo fd_ref_1)
+bpy.context.view_layer.update()
+_c, _s = math.cos(FD_TILT), math.sin(FD_TILT)
+_dy, _dz = (-0.13 - FD_TAIL_FILE.x) * FD_MM, (0.21 - FD_TAIL_FILE.y) * FD_MM
+_px, _pz = FD_TAIL_AT.x + _dy * _c - _dz * _s, FD_TAIL_AT.y + _dy * _s + _dz * _c
+_dg = bpy.context.evaluated_depsgraph_get()
+_hit, _loc, _nrm, _i, _ob, _m = scene.ray_cast(_dg, v(_px, -120, _pz) * S, Vector((0, 1, 0)))
+while _hit and _ob.name != "fd_body":
+    _hit, _loc, _nrm, _i, _ob, _m = scene.ray_cast(_dg, _loc + Vector((0, 1e-5, 0)), Vector((0, 1, 0)))
+if _hit:
+    _o = _loc / S - v(0, 0.25, 0)
+    _u, _w = v(_c, 0, _s), v(-_s, 0, _c)                         # along the tilted body / up
+    decal("fd_motor_sram", "SRAM", FONT_HEAVY, 15, 3.6, lambda x, y: _o + _u * x + _w * y, PRINT_GREY, cuts=2)
 
 # ---------------------------------------------------------------- cockpit (PACE T-Bar)
 # Headset stack (owner photos IMG_6972-6974): thin flared top cover on the head tube, one 10 mm aero
