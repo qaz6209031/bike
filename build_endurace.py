@@ -711,8 +711,11 @@ def st_profile(s_):
 
 st_fwd = v(math.sin(sta), 0, math.cos(sta))
 ST_BB_STUB = 95.0                                         # BB end fused into the moulded BB junction
-_st_s = [40.0] + [ST_LEN * k / 16 for k in range(17) if ST_LEN * k / 16 > 45]
-seat_tube = loft("seat_tube", [(s_, *st_profile(s_), 0) for s_ in _st_s], WHITE, n=48, exp=(1, 1), subsurf=False)
+# The seat tube is fused into the moulded rear end (rear_triangle) with the seat stays, so their junction is one
+# filleted surface (seatstay_ref.jpg); its name-tag decals are shrink-wrapped onto it after the fusion.
+ST_SS_J = ST_LEN * 0.70                                   # seat stays meet the seat tube here
+_st_s = [40.0] + [ST_LEN * k / 32 for k in range(33) if ST_LEN * k / 32 > 45]
+seat_tube = loft("seat_tube", [(s_, *st_profile(s_), 0) for s_ in _st_s], WHITE, n=96, exp=(1, 1), subsurf=False)
 seat_tube.rotation_euler = (0, sta + math.pi, 0)          # local X -> along the seat tube
 _stub = loft("seat_tube_bb_stub", [(s_, st_profile(s_)[0] + f, st_profile(s_)[1] + f, 0)      # flared base, tucked end
                                    for s_, f in ((0.0, 6.0), (20.0, 3.5), (40.0, 1.0), (60.0, 0.0), (75.0, -0.35),
@@ -726,10 +729,15 @@ for s, side in ((-1, "R"), (1, "L")):
     tube(f"chainstay_{side}",
          [v(-12, s * 25, 4), v(-70, s * 26, 16), v(-105, s * 32, 25), v(-210, s * 58, 42), rear + v(8, s * 64, 0)],
          [12, 10.5, 9.5, 10, 8], WHITE, smooth=True)                     # slim where it threads tyre | rings
-    ss_start = st_dir * (ST_LEN * 0.70) + v(0, s * 14, 0)
+    # stays start inside the seat tube (their end caps used to poke out of its sides) and leave it through
+    # the wishbone neck below
+    ss_start = st_dir * (ST_LEN * 0.70) + v(0, s * 6, 0)
+    # ... curving up into the seat tube's rear face so they arrive along it (seatstay_ref.jpg), not as a knee
+    _rn = v(-math.sin(sta), 0, -math.cos(sta))                   # rearward, normal to the seat tube
     tube(f"seatstay_{side}",
-         [ss_start, (ss_start + rear) / 2 + v(0, s * 52, 0), rear + v(6, s * 64, 10)],
-         [10, 8, 7], WHITE, smooth=True)
+         [st_dir * (ST_LEN * 0.70 + 38) + _rn * 4 + v(0, s * 4, 0), ss_start + st_dir * 8 + _rn * 9 + v(0, s * 1.5, 0),
+          (ss_start + rear) / 2 + v(0, s * 56, 0), rear + v(6, s * 64, 10)],
+         [8.5, 10, 8, 7], WHITE, smooth=True)
     # sculpted dropout: flat plate where chainstay and seatstay merge around the axle (IMG_6960-6962)
     d_cs = Vector((-210 - rear.x, 42 - BB_DROP)).normalized()
     d_ss = Vector((ss_start.x - rear.x, ss_start.z - BB_DROP)).normalized()
@@ -754,10 +762,24 @@ for s, side in ((-1, "R"), (1, "L")):
             upper.append(pt)
         return lower[:-1] + upper[:-1]
     extrude_profile(f"dropout_{side}", [hull(pts)], 60 if s > 0 else -70, 10, WHITE, origin=rear)
+# Seat-stay junction (owner photo seatstay_ref.jpg): the stays grow out of the back of the seat tube through one
+# moulded swell on the tube's rear face, big fillets and a rounded crotch arch between them. The ramp and the seat
+# tube are fused with the stays, so the fillets are real moulded surface, not intersections.
+_ss_j = ST_SS_J
+# the seat tube's rear face swells back into the stays: p = how far the moulding stands proud of the rear face,
+# ramping in from ~90 mm above the junction and tucking back in ~40 mm below it (the crotch arch)
+_ramp = []
+for ds, p_, hw_k in ((-42, 0.0, 0.70), (-28, 5.0, 0.78), (-14, 12.0, 0.85), (0, 17.0, 0.88), (12, 15.0, 0.86),
+                     (26, 10.0, 0.82), (44, 5.0, 0.76), (64, 1.8, 0.70), (88, 0.0, 0.62)):
+    hw_, hh_ = st_profile(_ss_j + ds)
+    _ramp.append((_ss_j + ds, hw_ * hw_k, (2 * hh_ - 1.2 + p_) / 2, (p_ + 1.2) / 2))   # front edge stays inside
+_ss_ramp = loft("seatstay_ramp", _ramp, WHITE, n=64, exp=(1, 1), subsurf=False)
+_ss_ramp.rotation_euler = (0, sta + math.pi, 0)                 # local +Z -> rearward, normal to the seat tube
 # BB shell + chainstays + seatstays + dropouts as one moulded rear end (filleted junctions, no flat stubs)
 # ... plus the down tube and seat tube BB ends, so every tube flows into the BB shell with a moulded fillet
 fuse("rear_triangle", ["bb_shell", "down_tube_bb_stub", "seat_tube_bb_stub", "chainstay_R", "chainstay_L",
-                       "seatstay_R", "seatstay_L", "dropout_R", "dropout_L"])
+                       "seatstay_R", "seatstay_L", "dropout_R", "dropout_L", "seat_tube",
+                       "seatstay_ramp"])
 
 # Frame decals: CANYON on down tube, ENDURACE SLX on top tube (both sides)
 dt_a, dt_b = v(10, 0, 8), _dt_end
@@ -829,6 +851,11 @@ for side, tag in ((-1, "R"), (1, "L")):
     place(f"nametag_canton_{tag}", rect_bmesh(4.75, 3.15, 6, 4), shifted(m_(0.9), -9.4, 1.6), FLAG_BLUE)
     place(f"nametag_sun_{tag}", disc_bmesh(0.9), shifted(m_(1.1), -9.4, 1.6), TAG_WHITE)
     decal(f"nametag_name_{tag}", "Kai", FONT_BOLD, 9, 5.5, shifted(m_(0.8), 6, 0), LOGO, cuts=3)
+    # the seat tube is a fused (remeshed, smoothed) surface: keep each layer at its height above the real surface
+    for part, lift in (("backing", 0.45), ("flag", 0.7), ("canton", 0.9), ("sun", 1.1), ("name", 0.8)):
+        sw = bpy.data.objects[f"nametag_{part}_{tag}"].modifiers.new("snap", "SHRINKWRAP")
+        sw.target = bpy.data.objects["rear_triangle"]
+        sw.wrap_method, sw.wrap_mode, sw.offset = "NEAREST_SURFACEPOINT", "ABOVE_SURFACE", lift * S
 
 # ---------------------------------------------------------------- fork
 t_axle = (ht_bot.z - BB_DROP) / math.sin(hta)
@@ -1265,28 +1292,197 @@ decal("chainring_sram", "SRAM", FONT_HEAVY, 24, 5, ring_map(v(0, 0, 0), -1, math
 decal("chainring_spec", "48|35T   12 SPD", FONT_COND, 30, 3.4, ring_map(v(0, 0, 0), -1, math.radians(104), R48 - 9,
       lift_ring), PRINT_GREY, cuts=2)
 
-# cranks (forged, tapered) + Quarq spindle cap
+# ---- cranks + power meter (SRAM Rival AXS arms on a SRAM DUB PM spindle): Tripo-generated shape
+# (crank_tripo.glb, kept out of git; no colour in the file) coloured from the owner's photo chain_ref.jpg.
+# The file holds the non-drive arm with the spindle and, loose, the Quarq battery cap. File axes: spindle along X
+# (splined drive end at -X, NDS arm outer face at +X), arm along +Y from the spindle axis to the pedal hole.
+# In-plane scale puts the pedal hole CRANK_LENGTH from the spindle axis; across the arm the file is ~2x too deep,
+# so the arm is squeezed to put its pedal face at the 145 mm Q-factor, and the spindle is stretched to reach the
+# drive arm. The drive arm is the same arm turned 180 deg about the vertical (no mirror), its end cap swapped for
+# the Quarq battery cap with the grey Q (owner photo: glossy black cap, tab toward the pedal).
+CRANK_GLB = os.path.join(OUT, "crank_tripo.glb")
+CRANK_AXIS_FILE = Vector((-0.4084, 0.0259))                      # spindle axis (file Y, Z)
+CRANK_PEDAL_FILE = Vector((0.300, 0.010))                        # pedal-hole centre (file Y, Z)
+CRANK_INNER_Y = 52.5                                             # arm's inner boss face, on the NDS wave washer
+CRANK_PEDAL_FACE_Y = 72.5                                        # pedal-end outer face (145 mm Q-factor)
+CRANK_SPLINE_Y = -64.0                                           # spindle's splined end, inside the drive arm
+CRANK_BLACK = mat("Crank Black", (0.018, 0.018, 0.02), rough=0.36, metal=0.55)   # satin black anodised alloy
+QUARQ_CAP = mat("Quarq Cap Black", (0.02, 0.02, 0.022), rough=0.12, metal=0.8)   # glossy, radially brushed
+QUARQ_GREY = mat("Quarq Logo Grey", (0.62, 0.62, 0.64), rough=0.45)
 crank_ang = math.radians(8)
 crank_len = CRANK_LENGTH
+_cd = (CRANK_PEDAL_FILE - CRANK_AXIS_FILE)
+CRANK_MM = crank_len / _cd.length                                # file unit -> mm in the arm's plane
+_cd = _cd.normalized()
+_ce = Vector((-_cd.y, _cd.x))                                    # in-plane, across the arm (~file +Z)
+CRANK_AX = (CRANK_PEDAL_FACE_Y - CRANK_INNER_Y) / (0.162 * CRANK_MM)   # pedal-end outer face at file X 0.162
+CRANK_SP = (CRANK_INNER_Y - CRANK_SPLINE_Y) / 0.434              # spindle: file X 0 .. -0.434
+
+def crank_from_tripo():
+    before = set(bpy.data.objects.keys())
+    bpy.ops.import_scene.gltf(filepath=CRANK_GLB)
+    new_obs = [bpy.data.objects[n] for n in set(bpy.data.objects.keys()) - before]
+    src = next(o for o in new_obs if o.type == "MESH")
+    dec = src.modifiers.new("decimate", "DECIMATE")
+    dec.ratio = 0.05
+    bpy.context.view_layer.update()
+    me = bpy.data.meshes.new_from_object(src.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    me.transform(src.matrix_world)
+    for o in new_obs:
+        bpy.data.objects.remove(o)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bpy.data.meshes.remove(me)
+    # split: loose battery cap (its own island, file X > 0.28) | spindle (X < 0) | arm
+    parts = {"cap": [], "spindle": [], "arm": []}
+    bm.faces.index_update()
+    for f in bm.faces:
+        c = f.calc_center_median()
+        parts["cap" if c.x > 0.28 and c.y > 0.3 else "spindle" if c.x < 0 else "arm"].append(f)
+    out = {}
+    for key, faces in parts.items():
+        sub = bm.copy()
+        sub.faces.index_update()
+        keep = {f.index for f in faces}
+        bmesh.ops.delete(sub, geom=[f for f in sub.faces if f.index not in keep], context="FACES")
+        bmesh.ops.delete(sub, geom=[vv for vv in sub.verts if not vv.link_faces], context="VERTS")
+        out[key] = sub
+    bm.free()
+    return out
+
+_crank_src = crank_from_tripo()
+
+def crank_world(p, s, u, plane_only=False):
+    """File point -> world mm for the arm on side s (+1 NDS) pointing along u."""
+    out_y = v(0, s, 0)
+    w = out_y.cross(u)                                           # file ~+Z, keeps the frame right-handed
+    q = Vector((p.y, p.z)) - CRANK_AXIS_FILE
+    a, b = q.dot(_cd) * CRANK_MM, q.dot(_ce) * CRANK_MM
+    lat = CRANK_INNER_Y + (p.x * CRANK_SP if p.x < 0 else p.x * CRANK_MM * CRANK_AX)
+    return u * a + w * b + out_y * lat
+
+def crank_mesh(name, bm_src, s, u, m, drop=None):
+    bm = bm_src.copy()
+    if drop:
+        bmesh.ops.delete(bm, geom=[f for f in bm.faces if drop(f.calc_center_median())], context="FACES")
+        bmesh.ops.delete(bm, geom=[vv for vv in bm.verts if not vv.link_faces], context="VERTS")
+    for vv in bm.verts:
+        vv.co = crank_world(vv.co, s, u) * S
+    bmesh.ops.dissolve_degenerate(bm, dist=1e-6, edges=bm.edges[:])   # decimation slivers -> glTF-valid mesh
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    for f in bm.faces:
+        f.smooth = True
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    me.validate()
+    return add(bpy.data.objects.new(name, me), m)
+
+def _near_axis(c, r):
+    return (Vector((c.y, c.z)) - CRANK_AXIS_FILE).length < r
+
 for s, ang in ((-1, crank_ang), (1, crank_ang + math.pi)):
     tag = "R" if s < 0 else "L"
     u = v(math.cos(ang), 0, math.sin(ang))
-    arm = loft(f"crank_{tag}", [(-20, 8, 19, 0), (0, 9, 18, 0), (crank_len * 120 / 172.5, 8.5, 13, 0), (crank_len, 8, 11, 0), (crank_len + 11.5, 7, 9, 0)],
-               RING_BLACK if s < 0 else CARBON)
-    arm.location = v(0, s * 63, 0) * S
-    arm.rotation_euler = along(u)
-    pedal(f"pedal_{tag}", u * crank_len + v(0, s * 68, 0), s)
-cyl("crank_spindle_cap", v(0, -72, 0), 14, 3, DARK)
-# what joins the arms to the frame: SRAM DUB spindle (28.99 mm) through PF86.5 press-fit cups, NDS wave washer
-cyl("crank_spindle", v(0, 0, 0), 14.5, 2 * 63, DARK)
+    # drive arm: the NDS self-extracting bolt cap (r 0.075, face at file X 0.222) gives way to the battery cap
+    crank_mesh(f"crank_{tag}", _crank_src["arm"], s, u, CRANK_BLACK,
+               drop=(lambda c: c.x > 0.205 and _near_axis(c, 0.074)) if s < 0 else None)
+    pedal(f"pedal_{tag}", u * crank_len + v(0, s * (CRANK_PEDAL_FACE_Y - 2), 0), s)
+u_L = v(math.cos(crank_ang + math.pi), 0, math.sin(crank_ang + math.pi))
+crank_mesh("crank_spindle", _crank_src["spindle"], 1, u_L, DARK)
+
+# Quarq battery cap: principal axes of the loose cap -> axis along -Y on the drive arm, tab toward the pedal
+def quarq_cap():
+    bm = _crank_src["cap"]
+    pts = [vv.co.copy() for vv in bm.verts]
+    c0 = sum(pts, Vector()) / len(pts)
+    cov = Matrix(((0.0,) * 3,) * 3)
+    for p in pts:
+        d = p - c0
+        for i in range(3):
+            for j in range(3):
+                cov[i][j] += d[i] * d[j]
+    # power iteration for the largest two axes; the cap axis is their cross product
+    def dominant(M, skip=None):
+        x = Vector((0.3, 0.5, 0.8))
+        for _ in range(200):
+            if skip is not None:
+                x -= skip * x.dot(skip)
+            x = (M @ x).normalized()
+        return x
+    e1 = dominant(cov)
+    e2 = dominant(cov, e1)
+    ax = e1.cross(e2).normalized()
+    tip = max(pts, key=lambda p: (p - c0 - ax * (p - c0).dot(ax)).length)   # the tab
+    if (tip - c0).dot(ax) < 0:                                   # the tab sits next to the logo (outer) face
+        ax = -ax
+    t = tip - c0 - ax * (tip - c0).dot(ax)
+    t.normalize()
+    # cap frame (t, ax x t, ax) -> world (u_R, ., -Y)
+    u_R = v(math.cos(crank_ang), 0, math.sin(crank_ang))
+    out = v(0, -1, 0)
+    F = Matrix((t, ax.cross(t), ax)).transposed()                # columns: file directions
+    Wd = Matrix((u_R, out.cross(u_R), out)).transposed()
+    R = Wd @ F.inverted()
+    lo = min((p - c0).dot(ax) for p in pts)
+    hi = max((p - c0).dot(ax) for p in pts)
+    rad = max((p - c0 - ax * (p - c0).dot(ax)).length for p in pts)
+    seat = crank_world(Vector((0.224, *CRANK_AXIS_FILE)), -1, u_R)   # where the NDS bolt cap's face is
+    # same size as the bolt cap it replaces: threaded body inside the arm, logo face where the bolt cap's was
+    base = seat - out * (hi * CRANK_MM)
+    cap = bm.copy()
+    for vv in cap.verts:
+        vv.co = (base + R @ ((vv.co - c0) * CRANK_MM)) * S
+    bmesh.ops.recalc_face_normals(cap, faces=cap.faces)
+    for f in cap.faces:
+        f.smooth = True
+    me = bpy.data.meshes.new("quarq_battery_cap")
+    cap.to_mesh(me)
+    cap.free()
+    add(bpy.data.objects.new("quarq_battery_cap", me), QUARQ_CAP)
+    return seat, rad * CRANK_MM
+
+_qface, _qrad = quarq_cap()
+# Quarq "Q": rounded-square outline, stroke from the centre out through the upper-rear corner (owner photo)
+def squircle(r, n=48, p=4.0):
+    pts = []
+    for k in range(n):
+        a = 2 * math.pi * k / n
+        c_, s_ = math.cos(a), math.sin(a)
+        pts.append((r * math.copysign(abs(c_) ** (2 / p), c_), r * math.copysign(abs(s_) ** (2 / p), s_)))
+    return pts
+_qo, _qi = squircle(5.6), squircle(4.1)
+_qpieces = [[_qo[k], _qo[(k + 1) % 48], _qi[(k + 1) % 48], _qi[k]] for k in range(48)]
+_qt = Vector((-1, 1)).normalized()                               # toward the upper-rear corner (photo)
+_qn = Vector((-_qt.y, _qt.x)) * 0.75
+_qa, _qb = _qt * 0.3, _qt * 6.6
+_qpieces.append([tuple(_qa - _qn), tuple(_qb - _qn), tuple(_qb + _qn), tuple(_qa + _qn)])
+_qrot = math.radians(-10)                                        # logo sits turned ~10 deg
+def _qmap(x, y):
+    xr, yr = x * math.cos(_qrot) - y * math.sin(_qrot), x * math.sin(_qrot) + y * math.cos(_qrot)
+    return _qface + v(xr, 0, yr) + v(0, -0.15, 0)
+bpy.context.view_layer.update()
+_dg = bpy.context.evaluated_depsgraph_get()
+_qy = []                                                         # outermost point of the cap face under the logo
+for _gx in range(-3, 4):
+    for _gz in range(-3, 4):
+        _o = (_qface + v(2.2 * _gx, -30, 2.2 * _gz)) * S
+        _hit, _loc, _n, _i, _ob, _m = scene.ray_cast(_dg, _o, Vector((0, 1, 0)))
+        while _hit and _ob.name != "quarq_battery_cap":
+            _hit, _loc, _n, _i, _ob, _m = scene.ray_cast(_dg, _loc + Vector((0, 1e-5, 0)), Vector((0, 1, 0)))
+        if _hit:
+            _qy.append(_loc.y / S)
+if _qy:
+    _qface = v(_qface.x, min(_qy), _qface.z)
+place("quarq_logo", shapes_bmesh(_qpieces, cuts=1), _qmap, QUARQ_GREY)
+# glossy black direct-mount collar: the chainring's hub, filling the ring bore around the drive arm's boss
+cyl("chainring_direct_mount", v(0, RING_Y - 3.6, 0), 26.5, 3.2, QUARQ_CAP)       # ring face -49 -> arm boss -52.5
+cyl("chainring_direct_mount_step", v(0, RING_Y - 0.5, 0), 26.5, 3.0, QUARQ_CAP)    # lines the 48T bore
+# what joins the arms to the frame: PF86.5 press-fit cups, NDS wave washer (spindle above)
 for s, tag in ((-1, "R"), (1, "L")):
     cyl(f"bb_cup_{tag}", v(0, s * 44.5, 0), 21.5, 3.0, RESIN)                     # cup lip on the shell face
     cyl(f"bb_cup_seal_{tag}", v(0, s * 46.4, 0), 17.0, 0.8, RESIN)
 cyl("crank_wave_washer", v(0, 51.5, 0), 16.5, 1.0, METAL)
-cyl("crank_arm_bolt_L", v(0, 72.4, 0), 10.5, 1.4, DARK)                         # NDS self-extracting crank bolt
-cyl("crank_arm_bolt_hex_L", v(0, 73.2, 0), 4.0, 0.3, RESIN, verts=6)
-place("quarq_ring", disc_bmesh(9, 32), lambda x, y: v(x, -73.6, y), PRINT_GREY)
-decal("quarq_q", "Q", FONT_BOLD, 9, 10, lambda x, y: v(x, -73.9, y), DARK, cuts=2)
 
 # cassette: 12 toothed cogs, windows in the big ones, freehub core
 COGS = [10, 11, 12, 13, 15, 17, 19, 21, 24, 28, 32, 36]
@@ -2104,7 +2300,7 @@ def frame_top(d, y):
     dg = bpy.context.evaluated_depsgraph_get()
     o = (P_TOP + tt_u * d + v(0, y, 0) + FRAME_N * 30) * S
     hit, loc, _n, _i, ob, _m = scene.ray_cast(dg, o, -FRAME_N)
-    while hit and ob.name not in ("top_tube", "seat_tube"):
+    while hit and ob.name not in ("top_tube", "rear_triangle"):
         hit, loc, _n, _i, ob, _m = scene.ray_cast(dg, loc - FRAME_N * 1e-5, -FRAME_N)
     if not hit:
         raise RuntimeError(f"frame_top: no frame surface at d={d:.1f}, y={y:.1f}")

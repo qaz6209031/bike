@@ -83,7 +83,9 @@ hash after each successful export. Refresh that hash manually if replacing the G
   tube's shape means updating its mapping, or decals sink or float. PNG-based decals (ENVE, Schwalbe, Bryton)
   use `mask_mat`/`print_mat`/`image_mat` with `uv=`.
 - `fuse()` voxel-remeshes and volume-preserving-smooths named objects into one filleted surface
-  (`front_triangle` = head tube + tube stubs, `fork`, `rear_triangle`, `stem_tbar` = stem + bar tops). The exporter
+  (`front_triangle` = head tube + tube stubs, `fork`, `rear_triangle` = BB shell, stays, dropouts and the whole seat tube
+  with its seat-stay ramp (`seatstay_ref.jpg`), `stem_tbar` = stem + bar tops). The seat tube's name-tag layers are
+  shrink-wrapped onto `rear_triangle`. The exporter
   cuts the finished `stem_tbar` surface at its `barRearX` property into `stem_tbar` (Stem group) and
   `handlebar_tbar_tops` (Cockpit), keeping the original normals, so the viewer can highlight the stem alone. Keep decal-carrying tubes (`down_tube`,
   `top_tube`) outside fusions; a decal on a fused surface needs a shrinkwrap (see the head-tube logo).
@@ -124,6 +126,9 @@ unsubscribes/cancels pending notifications on unmount.
 - Frame: Canyon Endurace CF SLX, size S, Crystal White; CANYON down tube, ENDURACE SLX top tube,
   Canyon "mountain" head-tube logo, custom Taiwan-flag "Kai" name tag under the seatpost collar.
 - Groupset: SRAM Rival eTap AXS 2x12 (48/35T, 10-36), SRAM DUB PM Spindle power meter, Rival AXS hoods/levers/paddles.
+  Crank arms + spindle + Quarq battery cap come from the Tripo mesh `crank_tripo.glb` (gitignored, like `pedal_tripo.glb`,
+  `rd_tripo.glb`, `fd_tripo.glb`; the build needs them): satin-black arms, glossy cap with the grey Q on the drive arm
+  (`chain_ref.jpg`); the drive arm is the NDS arm turned 180 deg about the vertical.
 - Wheels: Canyon ED42 CF carbon rims with white ENVE stickers (decals, not ENVE wheels), DT Swiss 350 hubs with rear ratchet upgraded from 36T to 54T,
   Schwalbe Pro One Evo 32mm tyres, SRAM Paceline 160mm rotors, SRAM flat-mount calipers,
   internally routed hoses (fork leg / chainstay ports).
